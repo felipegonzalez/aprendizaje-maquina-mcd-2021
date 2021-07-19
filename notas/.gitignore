@@ -1,0 +1,6 @@
+_book/
+node_modules/
+package-lock*
+_bookdown_files/
+# Local Netlify folder
+.netlify

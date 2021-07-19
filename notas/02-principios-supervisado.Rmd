@@ -1,0 +1,568 @@
+# Principios de aprendizaje supervisado
+
+```{r, include = FALSE}
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  ggplot2::scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+En esta sección examinaremos algunos principios teóricos y de metodología
+para el aprendizaje supervisado.
+
+## Población y pérdida
+
+Supongamos que tenemos una población grande de observaciones
+potenciales:
+
+$$(x_1, x_2, \ldots, x_p, y) $$
+
+Y para esa población nos interesa predecir una variable respuesta $y$ numérica en 
+términos de
+variables de entrada disponibles $x = (x_1,x_2,\ldots, x_p)$:
+
+$$(x_1, x_2, \ldots, x_p) \to y$$
+
+El proceso que produce la salida $y$ a partir
+de las entradas es típicamente muy complejo y dificíl de describir de
+forma mecanística (por ejemplo, el ingreso dadas características de los hogares).
+
+### Ejemplo {-}
+
+Para ilustrar
+esta discusión teórica, consideraremos datos simulados. La población está dada
+por el siguiente proceso generador de datos:
+
+```{r, message = FALSE}
+library(tidyverse)
+library(tidymodels)
+library(gt)
+genera_datos <- function(n = 500, tipo = NULL){
+  dat_tbl <- tibble(nse = runif(n, 0, 100)) |>
+    mutate(estudio_años = floor(rnorm(n, 2 * sqrt(nse), 1))) |>
+    mutate(estudio_años = pmax(0, pmin(18, estudio_años))) |> 
+    mutate(habilidad = rnorm(n, 100 + 0.1 * nse, 5)) |> 
+    mutate(z = 100 + (habilidad/100) * ( 10 * nse + 5 * estudio_años)) |> 
+    mutate(ingreso = z + rnorm(n, 0, 100))
+  obs_tbl <- dat_tbl |> 
+    mutate(tipo = tipo, id = 1:n)
+  obs_tbl |> select(id, tipo, x = estudio_años, y = ingreso)
+}
+```
+
+
+
+Tenemos una sola entrada y una respuesta numérica, y una muestra chica se ve
+como sigue:
+
+```{r, fig.width=4, fig.height=3}
+set.seed(13)
+n_entrena <- 20
+datos_tbl <- genera_datos(n = n_entrena, tipo = "entrena")
+ggplot(datos_tbl, aes(x = x, y = y)) + geom_point()
+```
+
+---
+
+Buscamos construir una función $f$ tal que si observamos
+cualquier $x = (x_1, x_2, \ldots, x_p) \to y$, entonces nuestra predicción es
+
+$$\hat{y} = f(x_1, x_2, \ldots, x_p) = f(x).$$
+Con esta regla o algoritmo $f$ queremos **predecir** con buena precisión 
+el valor de $y$. Esta $f$, como explicamos antes, puede ser producida de muy distintas
+maneras (experiencia, reglas a mano, datos, etc.) 
+
+Nuestra primera tarea es definir qué quiere decir _predecir con buena precisión_.
+
+Para hacer esto tenemos que introducir una medida del error, que llamamos en
+general **función de pérdida**. 
+
+```{block2, type='comentario'}
+**Función de pérdida y error de predicción**
+
+Si el verdadero valor observado es $y$ y nuestra
+predicción es $f(x)$, denotamos la  pérdida asociada a esta observación como
+$$L(y, f(x))$$
+Para medir el desempeño 
+general de la regla $f$, consideramos su valor
+esperado, el **error de predicción**, que es el promedio sobre toda la población:
+
+$$Err(f) = E[L(y, f(x))]$$  
+
+Este es el error que obtendríamos promediando las pérdidas sobre **toda** la población
+de interés.  
+```
+
+
+**Observación**: Para fijar ideas, podríamos usar por ejemplo la pérdida absoluta 
+$L(y, f(x)) = |y - f(x)|$  o la pérdida cuadrática  $L(y, f(x)) = (y - f(x))^2$. 
+
+**Al menos en teoría**, podemos encontrar una $f$ que minimiza esta pérdida:
+
+```{block2, type='comentario'}
+Para una población dada, el predictor óptimo (teórico) es
+
+$$f^* = \underset{f}{\mathrm{argmin}} E[L(y, f(x))].$$
+  
+Es decir: el mínimo error posible que podemos obtener es $Err(f^*)$. Para cualquier
+otro predictor $f$ tenemos que $Err(f)$ \geq $Err(f^*)$
+```
+  
+Por ejemplo si usamos la pérdida cuadrática $L(y, f(x)) = (y - f(x))^2$, entonces
+puede mostrarse que
+
+$$f^*(x) = E(y | x)$$
+de forma que $f^*$ es la media condicional de la $y$ dado que sabemos que las entradas
+son $x$. Si usáramos la pérdida absoluta $L(y, f(x)) = |y - f(x)|$ entonces
+$$f^*(x) = \textrm{mediana}(y|x).$$
+Distintas funciones de pérdida dan distintas soluciones teóricas.
+
+**Observaciones**: 
+
+- Podemos ver nuestra tarea entonces como una de ajuste de curvas: queremos aproximar tan bien como sea posible la función $f^*(x)$.
+- No es simple decidir qué función de pérdida debería utilizarse
+para un problema dado de predicción.  Generalmente es una combinación de 
+costos/beneficios del problema que tratamos, conveniencia computacional, y 
+cómo se comportan los errores de nuestros predictores bajo distintas pérdidas.
+
+### Ejemplo {-}
+
+Supongamos que nos interesa minimizar la pérdida absoluta. Si tomamos
+una muestra muy grande (para este problema), podemos aproximar la predicción óptima directamente.
+Abajo graficamos nuestra muestra chica de datos junto con el predictor óptimo:
+
+```{r, fig.width=5, fig.height=3}
+poblacion_tbl <- genera_datos(n = 10000, tipo = "poblacion")
+preds_tbl <- poblacion_tbl |> 
+  group_by(x) |> # condicionar a x
+  summarise(.pred = median(y)) |> # mediana, pues usamos pérdida absoluta
+  mutate(predictor = "óptimo")
+ggplot(datos_tbl, aes(x = x)) +
+  geom_point(aes(y = y), colour = "red") + 
+  geom_line(data = preds_tbl, aes(y = .pred, colour = predictor), size = 1.1) +
+  xlab("Años de estudio") + ylab("Ingreso anual (miles)")
+```
+
+## Estimando el desempeño y datos de prueba
+
+Para obtener una estimación de la pérdida para una función $f$ que usamos
+para hacer predicciones, podemos
+tomar una muestra de datos del proceso generador:
+
+$${\mathcal T} = \{(\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(2)}, \mathbf{y}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{(m)})\},$$
+
+Compararíamos entonces las respuestas observadas $\mathbf{y^{(i)}}$ con las
+predicciones $f(\mathbf{x^{(i)}})$. Ahora resumimos evaluando
+el error promedio sobre los datos de prueba. El **error de prueba** de $f$ es
+
+$$ \widehat{Err}(f) = \frac{1}{m} \sum_{i=1}^m L(\mathbf{y}^{(i)} , f(\mathbf{x}^{(i)}))$$
+Por ejemplo, si usamos la pérdida absoluta, 
+
+$$ \widehat{Err}(f) = \frac{1}{m} \sum_{i=1}^m |\mathbf{y}^{(i)} - f(\mathbf{x}^{(i)})|$$
+Si $m$ es grande, entonces tenemos por la ley de los grandes números que
+$$Err(f) \approx \widehat{Err} (f)$$
+Podemos también estimar el error de estimación de $\widehat{Err}(f)$ con 
+técnicas estándar, por ejemplo bootstrap o aproximación normal.
+
+**Obervación**: nótese que en estos cálculos no es necesario hacer ningún supuesto
+acerca de $f$, que en este argumento está fija y **no** utiliza la muestra
+de prueba. 
+
+
+### Ejemplo 1{-}
+
+Supongamos que $f$ es el predictor óptimo que obtuvimos arriba (pero esto aplica
+para cualquier otra función $f$ que usemos para hacer predicciones). Tomamos una
+muestra de prueba:
+
+
+```{r}
+prueba_tbl <- genera_datos(n = 1000, tipo = "prueba")
+eval_tbl <- prueba_tbl |>  
+  full_join(preds_tbl, by = "x") 
+resumen_tbl <- eval_tbl |>  
+  group_by(predictor) |> 
+  mae(truth = y, estimate = .pred) 
+resumen_tbl
+```
+
+Este es nuestro error de prueba. Como la muestra de prueba no es muy grande,
+podríamos usar un método estándar para estimar su precisión, por ejemplo con bootstrap. 
+
+
+### Ejemplo 2 {-}
+
+Ahora probemos con otro predictor, por ejemplo, supongamos que estamos usando
+la regla de "cada año de escolaridad aumenta ingresos potenciales en 40", 
+un predictor construido con reglas manuales que es
+
+```{r}
+f_regla <- function(x){
+  40 * x
+}
+```
+
+Abajo lo graficamos en comparación con el modelo óptimo:
+
+```{r, fig.width=5, fig.height=3}
+años_x <- tibble(x = 0:18)
+preds_regla_tbl <- años_x |> 
+  mutate(.pred = f_regla(x), predictor = "regla")
+preds_tbl <- bind_rows(preds_regla_tbl, preds_tbl)
+ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_tbl, aes(y = .pred, colour = predictor), size = 1.1) +
+  geom_point(aes(y = y), colour = "red")
+```
+
+```{r}
+eval_tbl <- prueba_tbl |>  
+  full_join(preds_tbl, by = "x") 
+resumen_tbl <- eval_tbl |>  
+  group_by(predictor) |> 
+  mae(truth = y, estimate = .pred) 
+resumen_tbl
+```
+
+ 
+Observa que el error es
+considerablemente mayor que el error que obtuvimos con el predictor óptimo del ejemplo anterior.
+
+
+## ¿Por qué el desempeño puede ser malo?
+
+Para una observación particular $(x, y)$, consideramos la diferencia $y - f(x)$,
+que podemos reescribir como
+
+$$y - f(x) = (f^* (x) - f(x)) + (y - f^*(x))$$
+Esto quiere decir que hay dos razones (que pueden ocurrir conjuntamente ) 
+por las cuales un predictor particular
+puede ser malo: 
+
+1. **Error irreducible**: el predictor óptimo $f^*$ tiene mal desempeño pues tenemos información incompleta
+acerca de los factores $x = x_1, x_2, \ldots, x_p$ que determinan la respuesta $y$. Incluso
+puede ser que algunas $x_i$ que tenemos son irrelevantes.
+2. **Error reducible**: Nuestro predictor $f(x)$ está lejos del óptimo $f^*(x)$.
+
+
+¿Cómo resolver estos problemas?
+
+1. **Error irreducible**: Necesitamos que el predictor óptimo tenga error menor, y 
+esto puede lograrse incluyendo información adicional para hacer las prediciones
+(es decir, más entradas $x$ que sean relevantes para predecir $y$).
+2. **Error reducible**: Tenemos que buscar maneras apropiadas de construir los
+predictores $f$. Aunque
+puede ser que reglas o experiencia resulten en predictores de buen desempeño, quisiéramos
+usar datos para *aprender* a predecir de manera no muy lejana de la óptima.
+
+
+## Tarea fundamental del aprendizaje supervisado {#aprendizaje}
+
+En aprendizaje supervisado, buscamos construir la función $f$ de manera
+automática usando datos. Supongamos entonces que tenemos un conjunto de datos *etiquetados*
+(sabemos la $y$ correspondiente a cada $x$):
+
+$${\mathcal L}=\{ (x^{(1)},y^{(1)}),(x^{(2)},y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) \}$$
+
+que llamamos **conjunto de entrenamiento**.
+
+Un **algoritmo de aprendizaje** (**aprender** de los datos)
+es una regla que asigna a cada conjunto de
+entrenamiento ${\mathcal L}$ una función $\hat{f}$:
+
+$${\mathcal L} \to \hat{f} = f_{\mathcal L} $$
+
+Una vez que construimos la función $\hat{f}$, podemos hacer predicciones.
+
+El desempeño del predictor particular $\hat{f}$ se mide igual que antes: 
+observamos otra muestra ${\mathcal T}$, que llamamos **muestra de prueba**,
+
+$${\mathcal T} = \{(\mathbf{x}^{(1)}, \mathbf{y}^{(1)}), (\mathbf{x}^{(2)}, \mathbf{y}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{y}^{(m)})\},$$
+
+y calculamos el **error de prueba**. Si suponemos que $m$ es suficientemente grande:
+
+$$ \widehat{Err}(\hat{f}) = \frac{1}{m} \sum_{i=1}^m L(\mathbf{y}^{(i)} , \hat{f}(\mathbf{x}^{(i)})) $$
+
+ es una buena aproximación del error de predicción $Err(\hat{f})$.
+
+Adicionalmente, definimos otra cantidad de menor interés,
+el **error de entrenamiento**, como 
+
+$$\overline{err} = \frac{1}{N}\sum_{i=1}^N L(y^{(i)} , \hat{f}(x^{(i)})).$$
+que es una medida de qué tan bien se ajusta a $\hat{f}$ a los datos observados. Usualmente
+esta cantidad no es apropiada para medir el desempeño de un predictor, como discutiremos
+más adelante.
+
+Sea $f$ el predictor
+que obtendríamos con nuestro método si lo pudiéramos entrenar con **toda la población**,
+de forma que ya no depende de la muestra particular de entrenamiento que usamos. Entonces
+podemos hacer una expansión de nuestra descomposición anterior:
+
+$$y - \hat{f}(x) = (f^* (x) - f(x)) + (f(x) - \hat{f}(x)) + (y - f^*(x))$$
+Y vemos que ahora tenemos tres componentes por las cuales la diferencia de la izquierda
+puede ser grande:
+
+1. **Error irreducible ** $y-f^*(x)$: El predictor óptimo $f^*$ se desempeña mal pues tenemos información incompleta
+acerca de las variables que determinan $y$.
+2. **Subajuste** o sesgo $f(x)-\hat{f}(x)$: incluso con todos los datos de la población, nuestro método
+da una predicción $f(x)$ que está lejos del óptimo $f^*(x)$. 
+3. **Sobreajuste** o varianza $f(x) - \hat{f}(x)$: Nuestro método varía de lo que se debería obtener con  la población completa (f). Esto quiere decir que ajusta aspectos particulares de 
+la muestra de entrenamiento que no generalizan a la población (decimos que ajusta ruido).
+
+
+### Ejemplo {-}
+
+Consideremos usar un método de $k$-vecinos más cercanos para resolver este problema.
+Este método es simple: si queremos hacer una predicción en las entradas $x$, 
+buscamos los puntos de entrenamiento con entradas $x^{(i)}$ más cercanas a $x$,
+que denotamos como $N_k(x)$. Tomamos las $y$ correspondientes a estas $x$ y las usamos
+para hacer nuestra predicción:
+
+$$f_2(x) = \frac{1}{k}\sum_{x^{(i)} \in N_k(x)} y^{(i)}$$
+
+En nuestro ejemplo, en lugar de usar un número fijo de vecinos, utilizaremos
+10% de los datos más cercanos al punto donde queremos predecir:
+
+```{r}
+entrena_tbl <- datos_tbl
+# modelo
+modelo_kvecinos <- nearest_neighbor(neighbors = floor(nrow(entrena_tbl) * 0.10), 
+                                    weight_func = "gaussian") |> 
+  set_mode("regression") |> 
+  set_engine("kknn")
+# preprocesamiento
+receta <- recipe(y ~ x, data = entrena_tbl |> select(x, y))
+# flujo
+flujo <- workflow() |> 
+  add_recipe(receta) |> 
+  add_model(modelo_kvecinos)
+# Ajustamos flujo
+flujo_ajustado <- fit(flujo, entrena_tbl)
+```
+
+Hacemos predicciones y calculamos el error:
+
+
+```{r}
+resumen_tbl <- 
+  predict(flujo_ajustado, prueba_tbl) |> 
+  bind_cols(prueba_tbl |> select(x, y)) |> 
+  mae(truth = y, estimate = .pred)  |>
+  add_column(predictor = "vecinos", .before = 1) |> 
+  bind_rows(resumen_tbl)
+resumen_tbl
+```
+
+Si graficamos podemos ver el problema:
+
+```{r, fig.width=5, fig.height=3}
+preds_1 <- predict(flujo_ajustado, tibble(x = 0:18)) |> 
+  bind_cols(tibble(x = 0:18, predictor = "vecinos"))
+preds_tbl <- bind_rows(preds_1, preds_tbl)
+ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+            aes(y = .pred, colour = predictor), size = 1.1) +
+  geom_point(aes(y = y), colour = "red")
+```
+
+Donde vemos que este método intenta interpolar los datos, capturando ruido y 
+produciendo variaciones que lo alejan del modelo óptimo.
+
+Ahora probemos este método 
+con una muestra muy grande, y veamos su desempeño.
+
+```{r}
+# Ajustamos 
+modelo_kvecinos <- nearest_neighbor(neighbors = nrow(poblacion_tbl) * 0.10, 
+                                    weight_func = "gaussian") |> 
+  set_mode("regression") |> 
+  set_engine("kknn")
+flujo <- workflow() |> 
+  add_recipe(receta) |> 
+  add_model(modelo_kvecinos)
+flujo_ajustado_limite <- fit(flujo, poblacion_tbl)
+```
+
+
+```{r}
+resumen_tbl <- 
+  predict(flujo_ajustado_limite, prueba_tbl) |> 
+  bind_cols(prueba_tbl |> select(x, y)) |> 
+  mae(truth = y, estimate = .pred)  |>
+  add_column(predictor = "vecinos_límite", .before = 1) |> 
+  bind_rows(resumen_tbl)
+resumen_tbl
+```
+
+
+
+En este caso, la estimación del error no está muy lejos del modelo óptimo. 
+
+```{r, fig.width=5, fig.height=3}
+preds_1 <- predict(flujo_ajustado_limite, tibble(x = 0:18)) |> 
+  bind_cols(tibble(x = 0:18, predictor = "vecinos_limite"))
+preds_tbl <- bind_rows(preds_1, preds_tbl)
+ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+            aes(y = .pred, colour = predictor), size = 1.1) +
+  geom_point(aes(y = y), colour = "red")
+```
+
+Esto quiere decir que
+
+-  $(f^* (x) - f(x))$ no produce errores grandes: nuestro método con toda la población
+queda muy cerca del óptimo (no hay sesgo)
+-  $(f(x) - \hat{f}(x))$ aporta considerablemente al error (sobreajuste)
+- La mayor parte del error todavía proviene de $(y - f^*(x))$ (irreducible)
+
+### Ejemplo {-}
+
+Ahora intentaremos con un modelo lineal:
+
+```{r}
+modelo_lineal <- linear_reg() |> 
+  set_mode("regression") |> 
+  set_engine("lm")
+receta <- recipe(y ~ x, data = entrena_tbl |> select(x, y)) 
+flujo <- workflow() |> 
+  add_recipe(receta) |> 
+  add_model(modelo_lineal)
+# Ajustamos
+flujo_ajustado <- fit(flujo, entrena_tbl)
+```
+
+Hacemos predicciones y calculamos el error:
+
+```{r}
+resumen_tbl <- predict(flujo_ajustado, prueba_tbl |> select(x, y)) |> 
+  bind_cols(prueba_tbl |> select(y)) |> 
+  mae(truth = y, estimate = .pred)  |>
+  add_column(predictor = "f_lineal", .before = 1) |> 
+  bind_rows(resumen_tbl)
+resumen_tbl
+```
+
+Y el desempeño de este método es ligeramente mejor que vecinos más cercanos.
+
+```{r, fig.width=5, fig.height=3}
+preds_1 <- predict(flujo_ajustado, tibble(x = 0:18)) |> 
+  bind_cols(tibble(x = 0:18, predictor = "lineal"))
+preds_tbl <- bind_rows(preds_1, preds_tbl)
+ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+            aes(y = .pred, colour = predictor), size = 1.1) +
+  geom_point(aes(y = y), colour = "red")
+```
+
+
+
+Ahora probemos este método con una muestra muy grande, y veamos su desempeño.
+
+```{r}
+# Ajustamos (no es necesario usar la población completa para este ejemplo)
+flujo_ajustado_limite <- fit(flujo, poblacion_tbl)
+resumen_tbl <- predict(flujo_ajustado_limite, prueba_tbl) |> 
+  bind_cols(prueba_tbl |> select(y)) |> 
+  mae(truth = y, estimate = .pred) |>
+  add_column(tipo = "f_lineal_lim", .before = 1) |> 
+  bind_rows(resumen_tbl)
+resumen_tbl
+```
+
+En este caso, la estimación del error sigue estando lejos modelo óptimo, y no es
+muy lejana a la que ajustamos con los datos de entrenamiento. 
+
+```{r, fig.width=5, fig.height=3}
+preds_1 <- predict(flujo_ajustado_limite, tibble(x = 0:18)) |> 
+  bind_cols(tibble(x = 0:18, predictor = "lineal_limite"))
+preds_tbl <- bind_rows(preds_1, preds_tbl)
+ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+            aes(y = .pred, colour = predictor), size = 1.1) +
+  geom_point(aes(y = y), colour = "red")
+```
+
+Esto quiere
+decir que
+
+-  $(f^* (x) - f(x))$ produce errores grandes (el subajuste es considerable)
+-  $(f(x) - \hat{f}(x))$ no aporta considerablemente al error (no hay sobreajuste)
+- Una buena parte del error se debe a $(y - f^*(x))$ (irreducible)
+
+---
+
+Cada parte del error se reduce de maneras distintas, como iremos viendo durante el curso:
+
+1. El término de ruido se reduce encontrando nuevas variables e información relevante
+para que, por lo menos teóricamente, sea posible tener error bajo. 
+2. El subajuste se reduce escogiendo métodos que puedan capturar información o patrones relevantes
+en muestras grande (modelos con más capacidad de aprendizaje), o procesando datos
+para extender esa capacidad.
+3. El segundo término se reduce usando métodos que hagan depender menos las predicciones
+de los datos de entrenamiento, de manera que no dependa de características irrelevantes
+de la muestra de entrenamiento. Esto puede hacerse usando muestras de entrenamiento más grandes,
+usando métodos más simples, eliminando variables que aportan poco a las predicciones.
+
+
+Nótese que 2 y 3 generalmente están en contraposición: 1 requiere utilizar métodos
+que puedan capturar más patrones en los datos, y 2 requiere métodos que no dependan
+muy fuertementente de los datos observados de entrenamiento.
+
+
+```{block2, type='comentario'}
+La **tarea fundamental del análisis supervisado** es:
+
+- Usando datos de entrenamiento ${\mathcal L}$, construimos una funcion $\hat{f}$ para predecir
+- Si observamos nuevos valores $x_0$, nuestra predicción es $\hat{y} = \hat{f}(x_0)$.
+- Buscamos que cuando observemos **nuevos** casos para predecir, nuestro error de predicción
+sea bajo en promedio ($Err$ sea bajo)
+- Usualmente estimamos $Err$ mediante una muestra de prueba o validación ${\mathcal T}$, así
+que buscamos minimizar la estimación $\hat{Err}$
+- Nos interesan métodos de construir $\hat{f}$ que produzcan errores de predicción bajos.
+```
+
+
+
+- Nótese que el error de entrenamiento se calcula sobre la muestra ${\mathcal L}$
+que se usó
+para construir $\hat{f}$, mientras que el error de predicción se estima usando
+una muestra independiente ${\mathcal T}$.
+- $\hat{Err}$ es una estimación razonable de el error de predicción $Err$ 
+(por ejemplo, $\hat{Err} \to Err$ cuando el tamaño de la muestra de prueba
+crece), pero $\overline{err}$ típicamente es **una estimación mala del error de
+predicción**.
+
+
+## Qué cosas no veremos en este curso
+
+En este curso nos concentraremos en la construcción, evaluación y mejora de 
+modelos predictivos. Para que estas ideas funcionen en problemas reales, hay
+más aspectos a considerar que no discutiremos con detalle (y muchas veces son
+considerablemente más difíciles de la teoría y los algoritmos):
+
+- La aplicación de aprendizaje de máquina requiere, en primer lugar, de que los
+**datos correctos** sean identificados y capturados. Esto en muchos casos requiere esfuerzos
+concentrados en esta dirección y típicamente no sucede sino hasta cuando comenzamos
+el trabajo de construir modelos predictivos (o al menos el trabajo de construir
+conjuntos de reglas). 
+
+- Para entender exactamente cuál es **el problema** que queremos resolver
+se requiere trabajo analítico considerable, y también trabajo en entender
+aspectos del negocio/área donde nos interesa usar aprendizaje máquina. Muchas
+veces es fácil resolver un problema muy preciso, que tenemos a la mano,
+pero que más adelante nos damos cuenta de que no es útil.
+
+- Estos dos puntos incluyen indentificar las **métricas** que queremos mejorar,
+lo cual no siempre se claro. Optimizar métricas incorrectas es poco útil en el
+mejor de los casos, y en los peores pueden causar daños. Evitar esto requiere
+monitoreo constante de varios aspectos del funcionamiento de nuestros modelos y sus
+consecuencias.
+
+- ¿Cómo poner en **producción** modelos y mantenerlos? Un flujo apropiado de trabajo,
+y de entrenamiento continuo puede ser la diferencia entre entre un modelo exitoso o uno
+que se vuelve fuente de dificultades y confusión.
+
+
+## Resumen
+
+
