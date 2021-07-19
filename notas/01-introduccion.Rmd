@@ -37,8 +37,8 @@ son diversas:
 
 - Quisiéramos obtener una respuesta barata, rápida, **automatizada**, y 
 con suficiente precisión.
-Por ejemplo, reconocer caracteres en una placa de coche de una fotografía se puede hacer por
-personas, pero eso es lento y costoso. Igual oír cada segundo de grabación
+Por ejemplo, reconocer caracteres en una placa de coche de una fotografía 
+se puede hacer por personas, pero eso es lento y costoso. Igual oír cada segundo de grabación
 de las boyas para saber si hay ballenas o no. Hacer mediciones directas
 del ingreso de un hogar requiere mucho tiempo y esfuerzo.
 - Quisiéramos **superar el desempeño actual** de los expertos o de reglas simples utilizando
@@ -174,7 +174,7 @@ angulos <- path_full_imgs[indice_imgs] |>
 
 ```{r, fig.width=4, fig.height=3}
 angulos_tbl <- angulos |> mutate(y_medidor = y_imagenes[indice_imgs])
-ggplot(angulos_tbl, aes(x = 180*atan2(y_1, x_1)/pi + 90, y = y_medidor)) +
+ggplot(angulos_tbl, aes(x = 180 * atan2(y_1, x_1) / pi + 90, y = y_medidor)) +
   geom_point() + xlab("Ángulo")
 ```
 
