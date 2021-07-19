@@ -4,3 +4,6 @@ package-lock*
 _bookdown_files/
 # Local Netlify folder
 .netlify
+*.rds
+_*.Rmd
+
