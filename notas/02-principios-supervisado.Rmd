@@ -37,14 +37,15 @@ por el siguiente proceso generador de datos:
 ```{r, message = FALSE}
 library(tidyverse)
 library(tidymodels)
+library(patchwork)
 library(gt)
 genera_datos <- function(n = 500, tipo = NULL){
   dat_tbl <- tibble(nse = runif(n, 0, 100)) |>
-    mutate(estudio_años = floor(rnorm(n, 2 * sqrt(nse), 1))) |>
-    mutate(estudio_años = pmax(0, pmin(18, estudio_años))) |> 
-    mutate(habilidad = rnorm(n, 100 + 0.1 * nse, 5)) |> 
-    mutate(z = 100 + (habilidad/100) * ( 10 * nse + 5 * estudio_años)) |> 
-    mutate(ingreso = z + rnorm(n, 0, 100))
+    mutate(estudio_años = floor(rnorm(n, 1.5 * sqrt(nse), 1))) |>
+    mutate(estudio_años = pmax(0, pmin(17, estudio_años))) |> 
+    mutate(habilidad = rnorm(n, 100 + 0.1 * nse, 1)) |> 
+    mutate(z = 100 + (habilidad/100) * ( 20 * nse + 5 * (estudio_años))) |> 
+    mutate(ingreso = pmax(0, 0.2*(z + rnorm(n, 0, 150))))
   obs_tbl <- dat_tbl |> 
     mutate(tipo = tipo, id = 1:n)
   obs_tbl |> select(id, tipo, x = estudio_años, y = ingreso)
@@ -53,14 +54,13 @@ genera_datos <- function(n = 500, tipo = NULL){
 
 
 
-Tenemos una sola entrada y una respuesta numérica, y una muestra chica se ve
-como sigue:
+Tenemos una sola entrada y una respuesta numérica, y una muestra se ve como sigue:
 
 ```{r, fig.width=4, fig.height=3}
-set.seed(13)
-n_entrena <- 20
-datos_tbl <- genera_datos(n = n_entrena, tipo = "entrena")
-ggplot(datos_tbl, aes(x = x, y = y)) + geom_point()
+set.seed(1234)
+datos_tbl <- genera_datos(n = 500, tipo = "entrena")
+ggplot(datos_tbl, aes(x = x, y = y)) + geom_jitter(width = 0.3) +
+  xlab("Años de estudio") + ylab("Ingreso anual (miles)")
 ```
 
 ---
@@ -128,19 +128,22 @@ cómo se comportan los errores de nuestros predictores bajo distintas pérdidas.
 
 ### Ejemplo {-}
 
-Supongamos que nos interesa minimizar la pérdida absoluta. Si tomamos
+Supongamos que nos interesa minimizar la pérdida cuadrática. Si tomamos
 una muestra muy grande (para este problema), podemos aproximar la predicción óptima directamente.
-Abajo graficamos nuestra muestra chica de datos junto con el predictor óptimo:
+Abajo graficamos nuestra muestra chica de datos junto con una
+buna aproximación del predictor óptimo:
 
 ```{r, fig.width=5, fig.height=3}
-poblacion_tbl <- genera_datos(n = 10000, tipo = "poblacion")
-preds_tbl <- poblacion_tbl |> 
+poblacion_tbl <- genera_datos(n = 50000, tipo = "poblacion")
+# calcular óptimo
+preds_graf_tbl <- poblacion_tbl |> 
   group_by(x) |> # condicionar a x
-  summarise(.pred = median(y)) |> # mediana, pues usamos pérdida absoluta
-  mutate(predictor = "óptimo")
+  summarise(.pred = mean(y)) |> # mediana, pues usamos pérdida absoluta
+  mutate(predictor = "_óptimo")
+# graficar con una muestra grande
 ggplot(datos_tbl, aes(x = x)) +
-  geom_point(aes(y = y), colour = "red") + 
-  geom_line(data = preds_tbl, aes(y = .pred, colour = predictor), size = 1.1) +
+  geom_jitter(aes(y = y), colour = "red") + 
+  geom_line(data = preds_graf_tbl, aes(y = .pred, colour = predictor), size = 1.1) +
   xlab("Años de estudio") + ylab("Ingreso anual (miles)")
 ```
 
@@ -157,9 +160,9 @@ predicciones $f(\mathbf{x^{(i)}})$. Ahora resumimos evaluando
 el error promedio sobre los datos de prueba. El **error de prueba** de $f$ es
 
 $$ \widehat{Err}(f) = \frac{1}{m} \sum_{i=1}^m L(\mathbf{y}^{(i)} , f(\mathbf{x}^{(i)}))$$
-Por ejemplo, si usamos la pérdida absoluta, 
+Por ejemplo, si usamos la pérdida cuadrática, 
 
-$$ \widehat{Err}(f) = \frac{1}{m} \sum_{i=1}^m |\mathbf{y}^{(i)} - f(\mathbf{x}^{(i)})|$$
+$$ \widehat{Err}(f) = \frac{1}{m} \sum_{i=1}^m (\mathbf{y}^{(i)} - f(\mathbf{x}^{(i)})^2$$
 Si $m$ es grande, entonces tenemos por la ley de los grandes números que
 $$Err(f) \approx \widehat{Err} (f)$$
 Podemos también estimar el error de estimación de $\widehat{Err}(f)$ con 
@@ -170,93 +173,75 @@ acerca de $f$, que en este argumento está fija y **no** utiliza la muestra
 de prueba. 
 
 
-### Ejemplo 1{-}
+### Ejemplo: óptimo {-}
 
 Supongamos que $f$ es el predictor óptimo que obtuvimos arriba (pero esto aplica
 para cualquier otra función $f$ que usemos para hacer predicciones). Tomamos una
-muestra de prueba:
+muestra de prueba, y evaluamos usando la raíz de la pérdida cuadrática media:
 
 
 ```{r}
-prueba_tbl <- genera_datos(n = 1000, tipo = "prueba")
+prueba_tbl <- genera_datos(n = 2000, tipo = "prueba")
 eval_tbl <- prueba_tbl |>  
-  full_join(preds_tbl, by = "x") 
+  left_join(preds_graf_tbl, by = "x") 
 resumen_tbl <- eval_tbl |>  
-  group_by(predictor) |> 
-  mae(truth = y, estimate = .pred) 
-resumen_tbl
+  group_by(predictor, tipo) |> 
+  rmse(truth = y, estimate = .pred) 
+fmt_resumen <- function(resumen_tbl){
+  resumen_tbl |> 
+    select(-.estimator) |> 
+    pivot_wider(names_from = tipo, values_from = .estimate) |> 
+    gt() |> 
+    fmt_number(where(is_double), decimals = 0)
+}
+fmt_resumen(resumen_tbl)
 ```
 
 Este es nuestro error de prueba. Como la muestra de prueba no es muy grande,
 podríamos usar un método estándar para estimar su precisión, por ejemplo con bootstrap. 
 
 
-### Ejemplo 2 {-}
+### Ejemplo: regla {-}
 
 Ahora probemos con otro predictor, por ejemplo, supongamos que estamos usando
-la regla de "cada año de escolaridad aumenta ingresos potenciales en 40", 
+la regla de "cada año de escolaridad aumenta ingresos potenciales en 100 unidades", 
 un predictor construido con reglas manuales que es
 
 ```{r}
 f_regla <- function(x){
-  40 * x
+  20 * x
 }
 ```
 
 Abajo lo graficamos en comparación con el modelo óptimo:
 
 ```{r, fig.width=5, fig.height=3}
-años_x <- tibble(x = 0:18)
+años_x <- tibble(x = seq(0, 17, by = 0.5))
 preds_regla_tbl <- años_x |> 
   mutate(.pred = f_regla(x), predictor = "regla")
-preds_tbl <- bind_rows(preds_regla_tbl, preds_tbl)
+preds_graf_tbl <- bind_rows(preds_regla_tbl, preds_graf_tbl)
 ggplot(datos_tbl, aes(x = x)) +
-  geom_line(data = preds_tbl, aes(y = .pred, colour = predictor), size = 1.1) +
-  geom_point(aes(y = y), colour = "red")
+  geom_point(aes(y = y), colour = "red", alpha = 0.2) +
+  geom_line(data = preds_graf_tbl, aes(y = .pred, colour = predictor), size = 1.1) 
 ```
 
 ```{r}
 eval_tbl <- prueba_tbl |>  
-  full_join(preds_tbl, by = "x") 
+  left_join(preds_graf_tbl, by = "x") 
 resumen_tbl <- eval_tbl |>  
-  group_by(predictor) |> 
-  mae(truth = y, estimate = .pred) 
-resumen_tbl
+  group_by(predictor, tipo) |> 
+  rmse(truth = y, estimate = .pred) 
+fmt_resumen(resumen_tbl)
 ```
 
  
 Observa que el error es
 considerablemente mayor que el error que obtuvimos con el predictor óptimo del ejemplo anterior.
+Quisiéramos buscar algoritmos que tengan mejor desempeño *aprendiendo* de datos 
+anteriores.
 
 
-## ¿Por qué el desempeño puede ser malo?
-
-Para una observación particular $(x, y)$, consideramos la diferencia $y - f(x)$,
-que podemos reescribir como
-
-$$y - f(x) = (f^* (x) - f(x)) + (y - f^*(x))$$
-Esto quiere decir que hay dos razones (que pueden ocurrir conjuntamente ) 
-por las cuales un predictor particular
-puede ser malo: 
-
-1. **Error irreducible**: el predictor óptimo $f^*$ tiene mal desempeño pues tenemos información incompleta
-acerca de los factores $x = x_1, x_2, \ldots, x_p$ que determinan la respuesta $y$. Incluso
-puede ser que algunas $x_i$ que tenemos son irrelevantes.
-2. **Error reducible**: Nuestro predictor $f(x)$ está lejos del óptimo $f^*(x)$.
-
-
-¿Cómo resolver estos problemas?
-
-1. **Error irreducible**: Necesitamos que el predictor óptimo tenga error menor, y 
-esto puede lograrse incluyendo información adicional para hacer las prediciones
-(es decir, más entradas $x$ que sean relevantes para predecir $y$).
-2. **Error reducible**: Tenemos que buscar maneras apropiadas de construir los
-predictores $f$. Aunque
-puede ser que reglas o experiencia resulten en predictores de buen desempeño, quisiéramos
-usar datos para *aprender* a predecir de manera no muy lejana de la óptima.
-
-
-## Tarea fundamental del aprendizaje supervisado {#aprendizaje}
+## Aprendizaje supervisado {#aprendizaje}
 
 En aprendizaje supervisado, buscamos construir la función $f$ de manera
 automática usando datos. Supongamos entonces que tenemos un conjunto de datos *etiquetados*
@@ -289,28 +274,15 @@ Adicionalmente, definimos otra cantidad de menor interés,
 el **error de entrenamiento**, como 
 
 $$\overline{err} = \frac{1}{N}\sum_{i=1}^N L(y^{(i)} , \hat{f}(x^{(i)})).$$
-que es una medida de qué tan bien se ajusta a $\hat{f}$ a los datos observados. Usualmente
+que es una medida de qué tan bien se ajusta a $\hat{f}$ a los datos con los
+que se entrenó $\hat{f}. Usualmente
 esta cantidad no es apropiada para medir el desempeño de un predictor, como discutiremos
 más adelante.
 
-Sea $f$ el predictor
-que obtendríamos con nuestro método si lo pudiéramos entrenar con **toda la población**,
-de forma que ya no depende de la muestra particular de entrenamiento que usamos. Entonces
-podemos hacer una expansión de nuestra descomposición anterior:
-
-$$y - \hat{f}(x) = (f^* (x) - f(x)) + (f(x) - \hat{f}(x)) + (y - f^*(x))$$
-Y vemos que ahora tenemos tres componentes por las cuales la diferencia de la izquierda
-puede ser grande:
-
-1. **Error irreducible ** $y-f^*(x)$: El predictor óptimo $f^*$ se desempeña mal pues tenemos información incompleta
-acerca de las variables que determinan $y$.
-2. **Subajuste** o sesgo $f(x)-\hat{f}(x)$: incluso con todos los datos de la población, nuestro método
-da una predicción $f(x)$ que está lejos del óptimo $f^*(x)$. 
-3. **Sobreajuste** o varianza $f(x) - \hat{f}(x)$: Nuestro método varía de lo que se debería obtener con  la población completa (f). Esto quiere decir que ajusta aspectos particulares de 
-la muestra de entrenamiento que no generalizan a la población (decimos que ajusta ruido).
 
 
-### Ejemplo {-}
+
+### Ejemplo: vecinos más cercanos {-}
 
 Consideremos usar un método de $k$-vecinos más cercanos para resolver este problema.
 Este método es simple: si queremos hacer una predicción en las entradas $x$, 
@@ -320,13 +292,20 @@ para hacer nuestra predicción:
 
 $$f_2(x) = \frac{1}{k}\sum_{x^{(i)} \in N_k(x)} y^{(i)}$$
 
+Primero obtendremos una muestra de entrenamiento:
+
+```{r}
+set.seed(12)
+entrena_tbl <- genera_datos(n = 20, tipo = "entrena")
+```
+
+
 En nuestro ejemplo, en lugar de usar un número fijo de vecinos, utilizaremos
 10% de los datos más cercanos al punto donde queremos predecir:
 
 ```{r}
-entrena_tbl <- datos_tbl
 # modelo
-modelo_kvecinos <- nearest_neighbor(neighbors = floor(nrow(entrena_tbl) * 0.10), 
+modelo_kvecinos <- nearest_neighbor(neighbors = nrow(entrena_tbl) * 0.1, 
                                     weight_func = "gaussian") |> 
   set_mode("regression") |> 
   set_engine("kknn")
@@ -337,176 +316,304 @@ flujo <- workflow() |>
   add_recipe(receta) |> 
   add_model(modelo_kvecinos)
 # Ajustamos flujo
-flujo_ajustado <- fit(flujo, entrena_tbl)
+flujo_ajustado_vecinos <- fit(flujo, entrena_tbl)
 ```
 
 Hacemos predicciones y calculamos el error:
 
 
 ```{r}
-resumen_tbl <- 
-  predict(flujo_ajustado, prueba_tbl) |> 
-  bind_cols(prueba_tbl |> select(x, y)) |> 
-  mae(truth = y, estimate = .pred)  |>
-  add_column(predictor = "vecinos", .before = 1) |> 
-  bind_rows(resumen_tbl)
-resumen_tbl
+eval_tbl <- bind_rows(prueba_tbl, entrena_tbl) 
+resumen_vmc_tbl <- 
+  predict(flujo_ajustado_vecinos, eval_tbl) |> 
+  mutate(predictor = "vecinos") |> 
+  bind_cols(eval_tbl) |> 
+  group_by(predictor, tipo) |> 
+  rmse(truth = y, estimate = .pred) 
+fmt_resumen(resumen_vmc_tbl)
 ```
 
-Si graficamos podemos ver el problema:
+El error de prueba, que es el que nos interesa hacer chico, es considerablemente
+grande. Si graficamos podemos ver el problema:
 
 ```{r, fig.width=5, fig.height=3}
-preds_1 <- predict(flujo_ajustado, tibble(x = 0:18)) |> 
-  bind_cols(tibble(x = 0:18, predictor = "vecinos"))
-preds_tbl <- bind_rows(preds_1, preds_tbl)
-ggplot(datos_tbl, aes(x = x)) +
-  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+preds_vmc <- predict(flujo_ajustado_vecinos, años_x) |> 
+  bind_cols(años_x) |> mutate(predictor = "vecinos")
+preds_graf_tbl <- bind_rows(preds_vmc, preds_graf_tbl |> filter(predictor == "_óptimo"))
+g_1 <- ggplot(entrena_tbl, aes(x = x)) +
+  geom_line(data = preds_graf_tbl |> filter(predictor != "regla"), 
             aes(y = .pred, colour = predictor), size = 1.1) +
-  geom_point(aes(y = y), colour = "red")
+  geom_point(aes(y = y), colour = "red") +
+  labs(subtitle = "Óptimo vs ajustado")
+g_1
 ```
 
 Donde vemos que este método intenta interpolar los datos, capturando ruido y 
-produciendo variaciones que lo alejan del modelo óptimo.
+produciendo variaciones que lo alejan del modelo óptimo. Esto lo notamos en lo
+siguiente:
 
-Ahora probemos este método 
-con una muestra muy grande, y veamos su desempeño.
+- Hay una brecha grande entre el error de entrenamiento y el error predictivo.
+- Esta estimación de vecinos más cercanos es muy dependiente de la muestra
+de entrenamiento que obtengamos, pues intenta casi interpolar los datos. Esto
+sugiere alta variabilidad de las predicciones dependiendo de la muestra particular
+de entrenamiento que utilizamos.
+- Decimos que este predictor está *sobreajustado*.
 
-```{r}
-# Ajustamos 
-modelo_kvecinos <- nearest_neighbor(neighbors = nrow(poblacion_tbl) * 0.10, 
-                                    weight_func = "gaussian") |> 
-  set_mode("regression") |> 
-  set_engine("kknn")
-flujo <- workflow() |> 
-  add_recipe(receta) |> 
-  add_model(modelo_kvecinos)
-flujo_ajustado_limite <- fit(flujo, poblacion_tbl)
-```
+### Ejemplo: regresión lineal {-}
 
+Ahora intentaremos con un modelo lineal. En este caso, utilizamos un predictor
+de la forma
 
-```{r}
-resumen_tbl <- 
-  predict(flujo_ajustado_limite, prueba_tbl) |> 
-  bind_cols(prueba_tbl |> select(x, y)) |> 
-  mae(truth = y, estimate = .pred)  |>
-  add_column(predictor = "vecinos_límite", .before = 1) |> 
-  bind_rows(resumen_tbl)
-resumen_tbl
-```
+$$f(x) = \beta_0 + \beta_1x$$
+Usamos la muestra de entrenamiento para encontrar la $\beta_0$ y $\beta_1$ que 
+minimizar el error sobre los datos disponibles de entrenamiento.
 
-
-
-En este caso, la estimación del error no está muy lejos del modelo óptimo. 
-
-```{r, fig.width=5, fig.height=3}
-preds_1 <- predict(flujo_ajustado_limite, tibble(x = 0:18)) |> 
-  bind_cols(tibble(x = 0:18, predictor = "vecinos_limite"))
-preds_tbl <- bind_rows(preds_1, preds_tbl)
-ggplot(datos_tbl, aes(x = x)) +
-  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
-            aes(y = .pred, colour = predictor), size = 1.1) +
-  geom_point(aes(y = y), colour = "red")
-```
-
-Esto quiere decir que
-
--  $(f^* (x) - f(x))$ no produce errores grandes: nuestro método con toda la población
-queda muy cerca del óptimo (no hay sesgo)
--  $(f(x) - \hat{f}(x))$ aporta considerablemente al error (sobreajuste)
-- La mayor parte del error todavía proviene de $(y - f^*(x))$ (irreducible)
-
-### Ejemplo {-}
-
-Ahora intentaremos con un modelo lineal:
 
 ```{r}
 modelo_lineal <- linear_reg() |> 
   set_mode("regression") |> 
   set_engine("lm")
-receta <- recipe(y ~ x, data = entrena_tbl |> select(x, y)) 
-flujo <- workflow() |> 
+flujo_lineal <- workflow() |> 
   add_recipe(receta) |> 
   add_model(modelo_lineal)
 # Ajustamos
-flujo_ajustado <- fit(flujo, entrena_tbl)
+flujo_ajustado_lineal <- fit(flujo_lineal, entrena_tbl)
 ```
 
 Hacemos predicciones y calculamos el error:
 
 ```{r}
-resumen_tbl <- predict(flujo_ajustado, prueba_tbl |> select(x, y)) |> 
-  bind_cols(prueba_tbl |> select(y)) |> 
-  mae(truth = y, estimate = .pred)  |>
-  add_column(predictor = "f_lineal", .before = 1) |> 
-  bind_rows(resumen_tbl)
-resumen_tbl
+eval_tbl <- bind_rows(prueba_tbl, entrena_tbl) 
+resumen_lineal_tbl <- 
+  predict(flujo_ajustado_lineal, eval_tbl) |> 
+  mutate(predictor = "lineal") |> 
+  bind_cols(eval_tbl) |> 
+  group_by(predictor, tipo) |> 
+  rmse(truth = y, estimate = .pred) 
+fmt_resumen(bind_rows(resumen_vmc_tbl, resumen_lineal_tbl))
 ```
 
-Y el desempeño de este método es ligeramente mejor que vecinos más cercanos.
+Y el desempeño de este método es mejor que vecinos más cercanos (ver columna
+de prueba). Nótese que a diferencia de
 
 ```{r, fig.width=5, fig.height=3}
-preds_1 <- predict(flujo_ajustado, tibble(x = 0:18)) |> 
-  bind_cols(tibble(x = 0:18, predictor = "lineal"))
-preds_tbl <- bind_rows(preds_1, preds_tbl)
-ggplot(datos_tbl, aes(x = x)) +
-  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+preds_1 <- predict(flujo_ajustado_lineal, tibble(x = 0:17)) |> 
+  bind_cols(tibble(x = 0:17, predictor = "lineal"))
+preds_graf_tbl <- bind_rows(preds_1, preds_graf_tbl)
+g_1 <- ggplot(datos_tbl, aes(x = x)) +
+  geom_point(aes(y = y), colour = "red", alpha = 0.1) +
+  geom_line(data = preds_graf_tbl |> filter(predictor %in% c("_óptimo", "lineal")), 
             aes(y = .pred, colour = predictor), size = 1.1) +
-  geom_point(aes(y = y), colour = "red")
+  labs(subtitle = "Óptimo vs ajustado")
+g_1
 ```
 
+En este caso:
 
+- No hay brecha grande entre el error de entrenamiento y el error predictivo
+- Observamos patrones claros de desajuste: el predictor lineal no captura
+el patrón curvo que presentan los datos: en la parte media de las $x$ tiende
+a producir predicciones demasiado altas y lo contario ocurre en los extremos
+- Decimos que esté modelo presenta *subajuste*.
 
-Ahora probemos este método con una muestra muy grande, y veamos su desempeño.
+## Entendiendo el error de predicción
+
+Estos dos ejemplos de predictores tienen mal desempeño (comparado
+con el óptimo por distintas razones. Para entender qué pasa, consideramos
+los residuales de cada ajuste, para un caso de prueba:
+
+$$\mathbf{y} - \hat{f}(\mathbf{x})$$
+Esta cantidad puede tener un valor positivo o negativo grande, lo que indica errores grandes.
+Sea $f^*$ el predictor óptimo que explicamos arriba. Entonces, en primer lugar:
+
+$$\mathbf{y} - \hat{f}(\mathbf{x}) = \underbrace{(f^* (\mathbf{x}) - \hat{f}(\mathbf{x}))}_\text{reducible} + \underbrace{(\mathbf{y}- f^*(\mathbf{x}))}_\text{irreducible}.$$
+donde vemos que si las dos cantidades de la derecha están cercanas a cero, entonces
+el residual es cercano a cero (la predicción es precisa):
+
+- **Error irreducible**: no depende de nuestro algoritmo, sino de la información que tenemos
+en $x$ para predecir $y$. Si queremos hacer esté error más chico, necesitamos incluir otras variables $x$ relevantes para predecir $y$.
+- **Error reducible**: qué tan lejos nuestro método está del óptimo. Podemos mejorar
+este error seleccionando nuestra muestra de entrenamiento y método de predicción $\hat{f}$ de manera adecuada.
+
+En nuestros dos ejemplos anteriores, el error reducible era considerablemente grande
+(como podemos verificar comparando con el predictor óptimo, que sólo sufre de error
+irredicuble). Pero la razón por la ese error reducible es grande es diferente en cada
+caso. Para explicar la diferencia, podemos considerar $f_{lim}$, el predictor que obtendríamos
+con nuestro método si ajustáramos nuestro método *con la población completa*, de 
+manera que $\hat{f}\to f_{\lim}$ cuando el tamaño de la muestra de entrenamiento
+se hace muy grande. 
+
+Podemos refinar nuestra descomposición y escribir:
+
+$$\mathbf{y} - \hat{f}(\mathbf{x}) = \underbrace{f^* (\mathbf{x}) - f_{\lim}(\mathbf{x})}_\text{sesgo} + 
+  \underbrace{f_{\lim}(\mathbf{x}) - \hat{f}(\mathbf{x})}_\text{variabilidad} + 
+  \underbrace{y - f^*(\mathbf{x})}_\text{irreducible}$$
+
+El error reducible ahora se descompone en dos partes:
+
+- El **sesgo** o subajuste: que se debe a la incapacidad de nuestro modelo
+de capturar la forma del predictor óptimo, incluso conociendo toda la población. Este término
+no depende de la muestra de entrenamiento: depende de la capacidad de nuestro método
+para aprender en condiciones ideales.
+- La **variabilidad** o error de estimación o sobreajuste: este error resulta
+de que tenemos información limitada de la población, y nuestro ajuste se aleja
+de lo que obtendríamos con información completa. Esta parte del error varía
+dependiendo de la muestra particular de entrenamiento que utilizamos.
+
+En nuestros dos ejemplos, intuímos que vecinos más cercanos sufre más de variabilidad
+o sobreajuste y regresión lineal de sesgo. Podemos verificar viendo qué pasa con
+los dos métodos cuando los entrenamos con la población completa.
+
+## Ejemplo:
+
+Vamos a ver qué sucede con nuestros dos métodos si utilizamos una muestra grande:
 
 ```{r}
+muestra_grande_tbl <- sample_n(poblacion_tbl, 10000) |> 
+  mutate(tipo = "entrena")
+modelo_kvecinos <- nearest_neighbor(neighbors = nrow(muestra_grande_tbl) * 0.10, 
+                                    weight_func = "gaussian") |> 
+  set_mode("regression") |> 
+  set_engine("kknn")
 # Ajustamos (no es necesario usar la población completa para este ejemplo)
-flujo_ajustado_limite <- fit(flujo, poblacion_tbl)
-resumen_tbl <- predict(flujo_ajustado_limite, prueba_tbl) |> 
-  bind_cols(prueba_tbl |> select(y)) |> 
-  mae(truth = y, estimate = .pred) |>
-  add_column(tipo = "f_lineal_lim", .before = 1) |> 
-  bind_rows(resumen_tbl)
-resumen_tbl
+flujo_vecinos <- workflow() |> 
+  add_recipe(receta) |> 
+  add_model(modelo_kvecinos)
+flujo_ajustado_vecinos_limite <- fit(flujo_vecinos, muestra_grande_tbl)
+flujo_ajustado_lineal_limite <- fit(flujo_lineal, muestra_grande_tbl)
+
+eval_tbl <- bind_rows(prueba_tbl, muestra_grande_tbl)
+resumen_vecinos_lim_tbl <- 
+  predict(flujo_ajustado_vecinos_limite, eval_tbl) |> 
+  mutate(predictor = "vecinos_limite") |> 
+  bind_cols(eval_tbl) |> 
+  group_by(predictor, tipo) |> 
+  rmse(truth = y, estimate = .pred) 
+resumen_lineal_lim_tbl <- 
+  predict(flujo_ajustado_lineal_limite, eval_tbl) |> 
+  mutate(predictor = "lineal_limite") |> 
+  bind_cols(eval_tbl) |> 
+  group_by(predictor, tipo) |> 
+  rmse(truth = y, estimate = .pred) 
+fmt_resumen(bind_rows(resumen_vmc_tbl, resumen_lineal_tbl, resumen_vecinos_lim_tbl, resumen_lineal_lim_tbl) |> arrange(predictor))
 ```
 
-En este caso, la estimación del error sigue estando lejos modelo óptimo, y no es
-muy lejana a la que ajustamos con los datos de entrenamiento. 
+¿Qué patrones ves en esta tabla? Podemos también graficar para entender mejor
+qué está pasando:
 
-```{r, fig.width=5, fig.height=3}
-preds_1 <- predict(flujo_ajustado_limite, tibble(x = 0:18)) |> 
-  bind_cols(tibble(x = 0:18, predictor = "lineal_limite"))
-preds_tbl <- bind_rows(preds_1, preds_tbl)
-ggplot(datos_tbl, aes(x = x)) +
-  geom_line(data = preds_tbl |> filter(predictor != "regla"), 
+```{r, fig.width=9, fig.height=3}
+preds_1 <- predict(flujo_ajustado_vecinos_limite, tibble(x = 0:17)) |> 
+  bind_cols(tibble(x = 0:17, predictor = "vecinos_limite"))
+preds_2 <- predict(flujo_ajustado_lineal_limite, tibble(x = 0:17)) |> 
+  bind_cols(tibble(x = 0:17, predictor = "lineal_limite"))
+preds_graf_tbl <- bind_rows(preds_1, preds_2, preds_graf_tbl) |> 
+  mutate(predictor = factor(predictor))
+g_1 <- ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_graf_tbl |> 
+            filter(str_detect(predictor, "vecinos|_óptimo")), 
             aes(y = .pred, colour = predictor), size = 1.1) +
-  geom_point(aes(y = y), colour = "red")
+  labs(subtitle = "Vecinos") 
+g_2 <- ggplot(datos_tbl, aes(x = x)) +
+  geom_line(data = preds_graf_tbl |> 
+            filter(str_detect(predictor, "lineal|_óptimo")), 
+            aes(y = .pred, colour = predictor), size = 1.1) +
+  labs(subtitle = "Lineal") 
+g_1 + g_2 
 ```
 
-Esto quiere
-decir que
+Esto quiere decir que:
 
--  $(f^* (x) - f(x))$ produce errores grandes (el subajuste es considerable)
--  $(f(x) - \hat{f}(x))$ no aporta considerablemente al error (no hay sobreajuste)
-- Una buena parte del error se debe a $(y - f^*(x))$ (irreducible)
-
----
-
-Cada parte del error se reduce de maneras distintas, como iremos viendo durante el curso:
-
-1. El término de ruido se reduce encontrando nuevas variables e información relevante
-para que, por lo menos teóricamente, sea posible tener error bajo. 
-2. El subajuste se reduce escogiendo métodos que puedan capturar información o patrones relevantes
-en muestras grande (modelos con más capacidad de aprendizaje), o procesando datos
-para extender esa capacidad.
-3. El segundo término se reduce usando métodos que hagan depender menos las predicciones
-de los datos de entrenamiento, de manera que no dependa de características irrelevantes
-de la muestra de entrenamiento. Esto puede hacerse usando muestras de entrenamiento más grandes,
-usando métodos más simples, eliminando variables que aportan poco a las predicciones.
+-  Nuestro método de vecinos más cercanos no tiene errores por sesgo, sino más
+bien por sobreajuste o variabilidad.
+- Nuestro método lineal no tiene mucha variabilidad (el estimado con una muestra
+grande es casi igual al de la muestra de entrenamiento), sino más bien
+por sesgo
+- En ambos casos, una buena parte del error es irreducible. Necesitaríamos otras
+variables de entrada para reducir este error.
 
 
-Nótese que 2 y 3 generalmente están en contraposición: 1 requiere utilizar métodos
-que puedan capturar más patrones en los datos, y 2 requiere métodos que no dependan
-muy fuertementente de los datos observados de entrenamiento.
+- El error por sesgo se reduce usando métodos más flexibles o menos
+restringidos que puedan capturar patrones claros en los datos. Este término
+no tiene qué ver con la muestra de entrenamiento.
+- Para reducir la variabilidad podemos usar métodos más simples o restringidos
+que no capturen tanto ruido. Aumentar la muestra de entrenamiento puede ayudar
+también.
+- El error irreducible se puede reducir incorporando información adicional relevante
+a las entradas.
+
+¿Qué cosas aumentan o disminuyen la complejidad de nuestro predictor?
+
+- Quitar variables reduce la complejidad, pero potencialmente aumenta el sesgo y
+el error irreducible.
+- Agregar variables derivadas puede reducir el sesgo y el error irreducible, 
+pero también puede incrementar la variabilidad o el sobreajuste.
+- Restringir el ajuste de alguna forma o penalizar predictores poco creíbles
+reduce la variabilidad, pero aumenta el sesgo.
+- Usar métodos más complicados en general o con más parámetros puede reducir el
+sesgo, pero quizá también aumenta el sobreajuste.
+
+
+## Agregando más información y error irreducible
+
+Podemos ver qué sucede cuando tenemos disponibles más variables
+relevantes. En este caso, probaremos con dos entradas:
+
+```{r}
+genera_datos_2 <- function(n = 500, tipo = NULL){
+  dat_tbl <- tibble(nse = runif(n, 0, 100)) |>
+    mutate(estudio_años = floor(rnorm(n, 1.5 * sqrt(nse), 1))) |>
+    mutate(estudio_años = pmax(0, pmin(17, estudio_años))) |> 
+    mutate(habilidad = rnorm(n, 100 + 0.1 * nse, 1)) |> 
+    mutate(z = 100 + (habilidad/100) * ( 20 * nse + 5 * (estudio_años))) |> 
+    mutate(ingreso = pmax(0, 0.2*(z + rnorm(n, 0, 150))))
+  obs_tbl <- dat_tbl |> 
+    mutate(tipo = tipo, id = 1:n)
+  obs_tbl |> select(id, tipo, x_1 = estudio_años, x_2 = nse,  y = ingreso)
+}
+```
+
+```{r}
+entrena_tbl <- genera_datos_2(20, tipo = "entrena")
+prueba_tbl <- genera_datos_2(500, tipo = "prueba")
+receta_2 <- recipe(y ~ x_1 + x_2, data = entrena_tbl)
+flujo_lineal <- workflow() |> 
+  add_recipe(receta_2) |> 
+  add_model(modelo_lineal)
+# Ajustamos
+flujo_ajustado_lineal <- fit(flujo_lineal, entrena_tbl)
+predict(flujo_ajustado_lineal, bind_rows(entrena_tbl, prueba_tbl)) |> 
+  bind_cols(bind_rows(entrena_tbl, prueba_tbl)) |>
+  group_by(tipo) |> 
+  rmse(truth = y, estimate = .pred) |> gt() |> 
+  fmt_number(.estimate, decimals = 1)
+```
+
+Y vemos cómo inmediatamente redujimos el error de predicción: en este caso, aunque el
+sobreajuste aumentó un poco, la reducción en el sesgo y en el error irreducible.
+Examina el caso de vecinos más cercanos.
+
+## Acerca de la estimación del error de predicción
+
+Cuando usamos una muestra de prueba limitada, podemos evaluar
+la precisión de nuestra estimación del error de predicción usando por ejemplo el bootstrap.
+En nuestro ejemplo anterior podríamos hacer los siguiente:
+
+```{r}
+library(infer)
+preds <- predict(flujo_ajustado_lineal, bind_rows(prueba_tbl)) |> 
+  bind_cols(prueba_tbl) 
+preds |> 
+  generate(reps = 1000, type = "bootstrap") |> 
+  group_by(replicate, tipo) |> 
+  rmse(truth = y, estimate = .pred) |> 
+  select(replicate, tipo, stat = .estimate) |>
+  get_ci(level = 0.90) |> 
+  gt() |> fmt_number(where(is_double), decimals = 1)
+```
+
+
+
+## Resumen
 
 
 ```{block2, type='comentario'}
@@ -531,6 +638,20 @@ una muestra independiente ${\mathcal T}$.
 (por ejemplo, $\hat{Err} \to Err$ cuando el tamaño de la muestra de prueba
 crece), pero $\overline{err}$ típicamente es **una estimación mala del error de
 predicción**.
+
+```{block2, type="comentario"}
+**Reduciendo el error de predicción**
+
+Para reducir el error de predicción, podemos:
+  
+1. Incluir variables relevantes que reduzcan el error irreducible.
+2. Reducir variabilidad usando métodos más estables o menos complejos.
+3. Reducir sesgo usando métodos más flexibles o con la estructura apropiada.
+
+Generalmente 2 y 3 están en contraposición.
+```
+
+
 
 
 ## Qué cosas no veremos en este curso
@@ -562,7 +683,5 @@ consecuencias.
 y de entrenamiento continuo puede ser la diferencia entre entre un modelo exitoso o uno
 que se vuelve fuente de dificultades y confusión.
 
-
-## Resumen
 
 
