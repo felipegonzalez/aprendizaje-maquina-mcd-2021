@@ -105,7 +105,7 @@ mejor_rmse <- select_best(vecinos_eval_tbl, metric = "rmse")
 ajuste_1 <- finalize_workflow(flujo_vecinos, mejor_rmse) |> 
   fit(datos_entrena)
 dat_graf <- tibble(peso_kg = seq(900, 2200, by = 10)) %>% 
-  crossing(tibble(year= c(70, 75, 80)))
+  crossing(tibble(año = c(70, 75, 80)))
 dat_graf <- dat_graf %>% 
   mutate(pred_1 = predict(ajuste_1, dat_graf) %>% pull(.pred))
 ggplot(datos_entrena, aes(x = peso_kg, group = año, colour = año)) +

@@ -333,7 +333,7 @@ La variable de condición de venta no podemos utilizarla. Podemos ver en
 lugar de eso solamente las de condición normal. También consideramos,
 por ejemplo, la calidad general de terminados:
 
-```{r, fig.width=6, fig.height=3}
+```{r areacalidad, fig.width=6, fig.height=3}
 g_1 <- ggplot(casas_entrena |>  
          filter(condicion_venta == "Normal") |>  
          mutate(calidad_grupo = cut(calidad_gral, breaks = c(0, 5, 7, 8, 10))), 

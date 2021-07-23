@@ -1,4 +1,5 @@
 ## Seleccionar variables para curso y poner nombres en español
+library(tidyverse)
 casas_f <- read_csv("../datos/houseprices/house-prices-train.csv") %>%
   select(id = Id, tipo_zona = MSZoning, frente_lote = LotFrontage,
          area_lote = LotArea,
