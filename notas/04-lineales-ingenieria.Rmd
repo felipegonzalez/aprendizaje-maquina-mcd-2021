@@ -131,7 +131,7 @@ Como discutimos al final de las sección anterior, minimizar directamente el err
 Algunas veces, encontrar la estructura apropiada puede requerir más trabajo
 que simplemente escoger una familia de modelos. Por ejemplo, en el caso de precios
 de casa, vimos que podríamos mejorar el ajuste haciendo que el coeficiente
-de área habitable dependiera de la calidad de los terminados \@ref(areacalidad).
+de área habitable dependiera de la calidad de los terminados \@ref(medicioncostosa).
 
 Usualmente tendremos que hacer varias transformaciones para obtener buen 
 desempeño de un modelo lineal. En la siguientes secciones mostramos algunas
@@ -267,7 +267,7 @@ datos |> head() |>  gt() |> tab_options(table.font.size = 10)
 
 Otra manera de expandir nuestro modelo es la utilización de interacciones, que 
 muchas veces son clave para tener éxito con modelos lineales. Vimos ejemplos
-de interacciones en el ejemplo de las casas (\@ref(areacalidad)) y en el primer
+de interacciones en el ejemplo de las casas (\@ref(medicioncostosa)) y en el primer
 ejemplo de ventas de tiendas que dependían del tráfico.
 
 ### Ejemplo {-}
@@ -439,7 +439,7 @@ Una de las maneras más simples y menos problemáticas de hacer esto es usando
 dos veces diferenciables. Los tramos están definidos por *nudos* que podemos
 definir por ejemplo igualmente espaciados en los datos. 
 
-```{r}
+```{r, fig.width = 5, fig.height=3}
 valores_x <- seq(-10, 110, 1)
 base_splines <- splines::ns(x = valores_x, knots = c(33, 66), 
                             Boundary.knots = c(0, 100))
@@ -491,7 +491,7 @@ datos_prueba <- testing(datos_split)
 
 Vamos a usar año y peso de los coches para predecir su rendimiento:
 
-```{r}
+```{r, fig.width=5, fig.height=3}
 ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl, colour = año)) +
   geom_point()
 ```
