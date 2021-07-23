@@ -1,0 +1,594 @@
+# Métodos lineales e ingenería de entradas
+
+```{r, include = FALSE}
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  ggplot2::scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+Una de las maneras más simples que podemos intentar
+para predecir $y$ en función de las $x_j$´s es mediante una suma ponderada
+de los valores de las $x_j's$, usando una función de la forma
+
+$$f_\beta (x) = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_p x_p,$$
+En este caso, escoger una función particular de esta familia, dada una muestra de entrenamiento ${\mathcal L}$, consiste en encontrar
+encontrar valores apropiados de las $\beta$'s, para construir un predictor:
+
+$$\hat{f}(x) = \hat{\beta}_0 + \hat{\beta}_1 x_1 + \hat{\beta}_2 x_2 \cdots + \hat{\beta} x_p$$
+y usaremos esta función $\hat{f}$ para hacer predicciones $\hat{y} =\hat{f}(x)$.
+
+
+
+#### Ejemplos {-}
+
+Queremos predecir las ventas futuras anuales $y$ de una tienda que se va a construir
+en un lugar dado. Las variables que describen el lugar son
+$x_1 = trafico\_peatones$, $x_2=trafico\_coches$. En una aproximación simple,
+podemos suponer que la tienda va a capturar una fracción de esos tráficos que
+se van a convertir en ventas. Quisieramos predecir con una función de la forma
+$$f_\beta (peatones, coches) = \beta_0 + \beta_1\, peatones + \beta_2\, coches.$$
+Por ejemplo, después de un análisis estimamos que 
+
+- $\hat{\beta}_0 = 1000000$ (ventas base, si observamos tráficos igual a 0: es lo que va a atraer la tienda)
+- $\hat{\beta}_1 = (200)*0.02 = 4$ (capturamos 2\% del tráfico peatonal, y cada capturado gasta 200 pesos)
+- $\hat{\beta}_2 = (300)*0.01 =3$ (capturamos 1\% del tráfico de autos, y cada capturado gasta 300 pesos)
+
+Entonces haríamos predicciones con
+$$\hat{f}(peatones, coches) = 1000000 +  4\,peatones + 3\, coches.$$
+El modelo lineal es más flexible de lo que parece en una primera aproximación, porque
+tenemos libertad para construir las variables de entrada a partir de nuestros datos.
+Por ejemplo, si tenemos una tercera variable 
+$estacionamiento$ que vale 1 si hay un estacionamiento cerca o 0 si no lo hay, podríamos
+definir las variables
+
+- $x_1= peatones$
+- $x_2 = coches$
+- $x_3 = estacionamiento$
+- $x_4 = coches*estacionamiento$
+
+Donde la idea de agregar $x_4$ es que si hay estacionamiento entonces vamos
+a capturar una fracción adicional del trafico de coches, y la idea de $x_3$ es que 
+la tienda atraerá más nuevas visitas si hay un estacionamiento cerca. Buscamos 
+ahora modelos de la forma
+$$f_\beta(x_1,x_2,x_3,x_4) = \beta_0 + \beta_1x_1 + \beta_2 x_2 + \beta_3 x_3 +\beta_4 x_4$$
+y podríamos obtener después de nuestra análisis las estimaciones
+- $\hat{\beta}_0 = 800000$ (ventas base)
+- $\hat{\beta}_1 = 4$
+- $\hat{\beta}_2 = (300)*0.005 = 1.5$
+- $\hat{\beta}_3 = 400000$ (ingreso adicional si hay estacionamiento por nuevo tráfico)
+- $\hat{\beta}_4 = (300)*0.02 = 6$ (ingreso adicional por tráfico de coches si hay estacionamiento)
+ 
+ y entonces haríamos predicciones con el modelo
+$$\hat{f} (x_1,x_2,x_3,x_4) = 800000 + 4\, x_1 + 1.5 \,x_2 + 400000\, x_3 +6\, x_4$$
+
+```{block2, type="comentario"}
+Nótese que cuando usamos modelos lineales, es necesario considerar qué entradas
+usar para construir el modelo de forma que la estructura lineal sea razonable. 
+Estas entradas son construidas a partir de las variables originales
+```
+
+En este caso particular, teníamos peatones, coches y estacionamiento, pero
+construimos también el producto de tráfico de coches y estacionamiento, pues
+la relación de ventas con coches es diferente dependiendo de sí la tienda
+tiene estacionamiento o no.
+
+## Aprendizaje de coeficientes (ajuste)
+
+En el ejemplo anterior, los coeficientes fueron calculados (o estimados) usando
+experiencia, reglas, argumentos teóricos, o quizá otras fuentes de datos (como estudios
+o encuestas, conteos, etc.) 
+
+Ahora quisiéramos construir un algoritmo para
+aprender estos coeficientes del modelo
+$$f_\beta (x) = \beta_0 + \beta_1 x_1 + \cdots \beta_p x_p$$
+a partir de una muestra de entrenamiento de datos históricos de tiendas que hemos
+abierto antes:
+$${\mathcal L}=\{ (x^{(1)},y^{(1)}),(x^{(2)},y^{(2)}), \ldots, (x^{(N)}, y^{(N)}) \}$$
+El criterio de ajuste (algoritmo de aprendizaje) más usual para regresión 
+lineal es el de **mínimos cuadrados**. 
+
+Construimos las predicciones (ajustados) para la muestra de entrenamiento:
+$$ f_\beta (x^{(i)}) = \beta_0 + \beta_1 x_1^{(i)}+ \cdots + \beta_p x_p^{(i)}$$
+
+Y consideramos las diferencias de los ajustados con los valores observados:
+
+$$e^{(i)} = y^{(i)} - f_\beta (x^{(i)})$$
+
+La idea entonces es minimizar la suma de los residuales al cuadrado, para
+intentar que la función ajustada pase lo más cercana a los puntos de entrenamiento 
+que sea posible. La función de pérdida que utilizamos más frecuentemente
+es la pérdida cuadrática, dada por:
+
+$$L(\beta) = \frac{1}{N}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
+
+```{block2, type = 'comentario'}
+**Mínimos cuadrados para regresión lineal**
+Buscamos encontrar:
+$$\hat{\beta} = \mathrm{arg\,min}_{\beta} L(\beta) = \mathrm{arg\,min}_{\beta}\frac{1}{N}\sum_{i=1}^N (y^{(i)} - f_\beta(x^{(i)}))^2$$
+    donde
+ $$f_\beta (x^{(i)}) = \beta_0 + \beta_1 x_1^{(i)}+ \cdots + \beta_p x_p^{(i)}$$
+```
+
+Hay varias maneras de resolver este problema: puede hacerse analíticamente
+con álgebra lineal, o con algún método numérico como descenso máximo (que
+puede escalarse fácilmente). Típicamente la función objetivo es
+convexa, y la solución es única, excepto en casos degenerados que podremos
+evitar más adelante usando regularización.
+
+**Observación**:
+Como discutimos al final de las sección anterior, minimizar directamente el error
+ de entrenamiento para encontrar los coeficientes puede resultar en en un modelo
+ sobreajustado/con varianza alta/ruidoso. Hay
+ tres grandes estrategias para mitigar este problema: restringir o estructurar la familia
+ de funciones, penalizar la función objetivo o perturbar la muestra de entrenamiento.
+ El método mas común es cambiar la función objetivo, que discutiremos más adelante
+ en la sección de regularización.
+
+## Ingeniería de entradas
+
+Algunas veces, encontrar la estructura apropiada puede requerir más trabajo
+que simplemente escoger una familia de modelos. Por ejemplo, en el caso de precios
+de casa, vimos que podríamos mejorar el ajuste haciendo que el coeficiente
+de área habitable dependiera de la calidad de los terminados \@ref(areacalidad).
+
+Usualmente tendremos que hacer varias transformaciones para obtener buen 
+desempeño de un modelo lineal. En la siguientes secciones mostramos algunas
+de las más usuales.
+
+
+## Variables categóricas
+
+En primer lugar, podemos incluir variables categóricas creando variables
+numéricas 0-1 para cada categoría. Por ejemplo para la variable calidad sótano:
+
+```{r, message = FALSE}
+library(tidyverse)
+library(tidymodels)
+library(gt)
+source("../R/casas_traducir_geo.R")
+set.seed(83)
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+casas_entrena |> count(calidad_sotano)
+```
+El mejor nivel es Ex (excelente), luego sigue Gd (bueno), luego Fa (razonable) y 
+finalmente TA (típico)). Hay otro nivel Po (Malo) que no aparece en estos datos.
+
+En primer lugar, podemos codificar los valores faltantes, que en este caso
+indican casas sin sótano:
+
+```{r}
+receta_na <- recipe(~ calidad_sotano, casas_entrena) |> 
+  step_unknown(calidad_sotano, new_level = "no_sótano") |> 
+  step_relevel(calidad_sotano, ref_level = "TA")
+casas_preproc <- prep(receta_na) |> juice()
+casas_preproc |> count(calidad_sotano)
+```
+
+Ahora convertimos a codificación dummy:
+
+```{r}
+set.seed(7)
+receta_dummy <- 
+  recipe( ~ calidad_sotano, casas_entrena) |> 
+  step_unknown(calidad_sotano, new_level = "no_sótano") |> 
+  step_relevel(calidad_sotano, ref_level = "TA") |> 
+  step_dummy(calidad_sotano, keep_original_cols = TRUE)
+# preparar receta
+receta_dummy_prep <- prep(receta_dummy) 
+# extrae los datos de entrenamiento preprocesados
+receta_dummy_prep |> juice() |> 
+  sample_n(10) |> gt() |> 
+  tab_options(table.font.size = 10)
+```
+
+Nótese que no hay columna para el nivel TA, que tomamos como referencia. Incluir esta
+columna sería redundante, pues tenemos una constante en el predictor. Estas son las
+columnas que incluímos en el modelo.
+
+Veamos qué pasa cuando preprocesamos datos de prueba:
+
+```{r}
+prueba_casas <- testing(casas_split)
+# supongamos que un nuevo nivel aparece
+prueba_casas$calidad_sotano[1] <- "no visto antes"
+datos <- bake(receta_dummy_prep, prueba_casas)
+```
+
+En este caso, podemos hacer nuestro flujo más robusto incluyendo un
+nuevo nivel en los factores donde pondremos casos no vistos. Modificamos nuestra receta:
+
+
+```{r}
+receta_dummy <- 
+  recipe( ~ calidad_sotano, casas_entrena) |> 
+  step_novel(calidad_sotano, new_level = "nuevo") |> 
+  step_unknown(calidad_sotano, new_level = "no_sótano") |> 
+  step_relevel(calidad_sotano, ref_level = "TA") |> 
+  step_dummy(calidad_sotano, keep_original_cols = TRUE)
+# preparar receta
+receta_dummy_prep <- prep(receta_dummy) 
+```
+
+```{r}
+prueba_casas <- testing(casas_split)
+# supongamos que un nuevo nivel aparece
+prueba_casas$calidad_sotano[1] <- "no visto antes"
+datos <- bake(receta_dummy_prep, prueba_casas)
+datos |> head() |> gt() |> tab_options(table.font.size = 10)
+```
+
+Y podemos ignorar el nuevo nivel al hacer predicciones (que equivale a ponerlo
+en la categoría de referencia, que en este caso es TA), o podemos lidiar de manera
+ad-hoc con este nivel.
+
+
+
+Otro problema con el que podemos encontrarnos es variables categóricas que son muy
+ralas. Por ejemplo, una variable que tiene muchas categorías y algunas de ellas tienen
+muy pocos datos, además de que es probable que observemos nuevas categorías en el futuro.
+Por ejemplo, para la variable de zona:
+
+```{r}
+casas_entrena |> count(nombre_zona) |> 
+  arrange(desc(n)) |> gt() |> tab_options(table.font.size = 10)
+```
+
+En este caso, tenemos muchas categorías, algunas con muy pocos datos, y es posible que observemos nuevos datos. Una técnica es agrupar los datos de baja cardinalidad
+en un nuevo nivel:
+
+```{r}
+receta_vecindario_1 <- 
+  recipe( ~ nombre_zona, casas_entrena) |>
+  step_novel(nombre_zona, new_level = "nuevo") |> 
+  step_other(nombre_zona, threshold = 0.01, other = "otras") 
+receta_vecindario <- receta_vecindario_1 |> 
+  step_dummy(nombre_zona)
+# preparar receta
+receta_vecindario_prep <- prep(receta_vecindario_1)
+set.seed(8231)
+receta_vecindario_prep |> juice() |> 
+  count(nombre_zona) |> arrange(desc(n)) |> gt()
+```
+En este caso, las zonas de baja frecuencia fueron agrupadas en la categoría "otras".
+Si observamos un nuevo nivel al momento de predicción:
+
+```{r}
+prueba_casas <- testing(casas_split)
+# supongamos que un nuevo nivel aparece
+prueba_casas$nombre_zona[1] <- "Xochimilco"
+datos <- bake(prep(receta_vecindario), prueba_casas)
+datos |> head() |>  gt() |> tab_options(table.font.size = 10)
+```
+
+## Interacciones
+
+Otra manera de expandir nuestro modelo es la utilización de interacciones, que 
+muchas veces son clave para tener éxito con modelos lineales. Vimos ejemplos
+de interacciones en el ejemplo de las casas (\@ref(areacalidad)) y en el primer
+ejemplo de ventas de tiendas que dependían del tráfico.
+
+### Ejemplo {-}
+Si $x_1$ es el área en metros cuadrados de una casa, y $x_2$ una calificación
+numérica de su calidad, podemos considerar el modelo sin interacciones:
+
+$$\beta_0 + \beta_1x_1 + \beta_2 x_2$$
+
+Pero no tiene mucho sentido que el efecto marginal de $x_1$ sea constante para
+cualquier nivel de calidad, y tampoco que la calidad de terminados agregue una cantidad
+fija al precio de la casa sin tomar en cuenta su tamaño. Podemos remediar esto
+creando una nueva variable que es le producto de $x_1$ y $x_2$:
+
+$$x_3 = x_1 x_2$$
+
+y agregando, nuestro predictor para precio es
+
+$$ \beta_0 +  \beta_1x_1 + \beta_2 x_2 + \beta_3 x_1x_2$$
+
+Ahora notemos que para $x_2$ fija, el modelo es
+
+$$(\beta_0 + \beta_2x_2) + (\beta_1 + \beta_3x_2)x_1 = \gamma_0 + \gamma_1x_1$$
+De modo que es lineal en $x_1$. La diferencia es que cuando cambia $x_2$, la
+recta que ajustamos es diferente.
+
+```{r, fig.width = 4, fig.height=3}
+beta <- c(0, 50, 100, 20)
+combs_tbl <- crossing(x_1 = seq(2, 20, by = 1), x_2 = seq(0, 10, by = 2)) |> 
+  mutate(x_3 = x_1 * x_2) |> 
+  mutate(pred = beta[1] + beta[2]*x_1 + beta[3]*x_2 + beta[4]*x_3)
+ggplot(combs_tbl, aes(x = x_1, y = pred, group = x_2, colour = x_2)) +
+  geom_line()
+```
+Y vemos que cuando la calidad es baja, el precio por metro cuadrado es más bajo
+que cuando la calidad es alta. Otra manera de pensar esto es que la inclusión de
+la interacción produce curvas marginales que *rotan* dependiendo del valor de otras
+variables.
+
+**Pregunta**. ¿puedes pensar en otros casos donde las interacciones deben
+jugar un papel importante?
+
+```{block2, type="resumen"}
+- Una manera simple de incluir interacciones en nuestro predictor entre dos variables
+numéricas $x_1$ y $x_2$ es incluír también como entrada el producto $x_3 = x_1x_2$.
+- Cuando queremos producir interacciones entre una variable categórica $g$ y
+una numérica $x$, podemos hacer el mismo procedimiento multiplicando la variable categórica
+por cada una de las variable dummy que creamos a partir de $g$. Esto en efecto produce una pendiente para $x$ dependiendo del valor que toma $g$.
+```
+
+
+## Ejemplo: precios de casas
+
+ En el ejemplo de precios
+de casas, por ejemplo, es claro que el efecto en ventas del tamaño de las áreas
+(habitable, garage, etc.) depende de la calidad de los terminados, como vimos
+en la introducción. En la siguiente receta de preprocesamiento:
+
+- Cortamos calidad general en 5 grupos: este paso no es necesario y puede dañar el desempeño, pero es consistente con el análisis que hicimos anteriormente.
+- Lidiamos con niveles nuevos y los ponemos en una categoría "nuevo" (para que nuestro modelo
+no falle al momento de predicción)
+- Ponemos los faltantes de calidad sotano y garage en una categoría nueva (no tienen sótano y/o garage)
+- Agrupamos las zonas con pocas observaciones en una categoría de "Otros"
+- Quitamos los NA's de área garage y área sotano, que deben ser igual a 0 cuando no existen
+estas características.
+- Creamos variables dummy de todas las variables categóricas
+- Incluimos interacciones de distintas áreas con las dummy correspondientes, incluyendo
+zona con área habitable
+- Finalmente, eliminamos para el ajuste aquellas variables que tengan varianza
+cercana a cero (500 /1 quiere decir que elimina cualquier variable cuyo conteo del valor
+más común entre el conteo de la siguiente es mayor a 500).
+
+```{r, message = FALSE}
+library(tidyverse)
+library(tidymodels)
+library(gt)
+source("../R/casas_traducir_geo.R")
+set.seed(83)
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+receta_casas <- recipe(precio_miles ~ 
+           nombre_zona + 
+           area_hab_m2 + area_garage_m2 + area_sotano_m2 + 
+           area_lote_m2 + 
+           año_construccion + 
+           calidad_gral + calidad_garage + calidad_sotano + 
+           num_coches  + 
+           aire_acondicionado + condicion_venta, 
+           data = casas_entrena) |> 
+  step_filter(condicion_venta == "Normal") |> 
+  step_select(-condicion_venta, skip = TRUE) |> 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) |>
+  step_novel(nombre_zona, calidad_sotano, calidad_garage) |> 
+  step_unknown(calidad_sotano, calidad_garage) |> 
+  step_other(nombre_zona, threshold = 0.02, other = "otras") |> 
+  step_mutate(area_sotano_m2 = ifelse(is.na(area_sotano_m2), 0, area_sotano_m2)) |> 
+  step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |> 
+  step_dummy(nombre_zona, calidad_gral, calidad_garage, calidad_sotano, aire_acondicionado) |> 
+  step_interact(terms = ~ area_hab_m2:starts_with("calidad_gral")) |> 
+  step_interact(terms = ~ area_hab_m2:starts_with("nombre_zona")) |> 
+  step_interact(terms = ~ area_garage_m2:starts_with("calidad_garage")) |> 
+  step_interact(terms = ~ area_sotano_m2: starts_with("calidad_sotano")) |> 
+  step_nzv(all_predictors(), freq_cut = 500 / 1, unique_cut = 1)
+```
+
+Entrenamos la receta y vemos cuántos casos y columnas tenemos:
+
+```{r}
+receta_casas_prep <- prep(receta_casas, verbose = TRUE)
+datos_tbl <- juice(receta_casas_prep)
+dim(datos_tbl)
+```
+
+```{r}
+datos_tbl |>
+  mutate(across(where(is.numeric), round, 2)) |>
+  head() |> 
+  gt()
+```
+
+Finalmente, usamos un modelo lineal con las `r ncol(datos_tbl)` entradas
+que acabamos de crear:
+
+```{r}
+flujo_casas <- workflow() |> 
+  add_recipe(receta_casas) |> 
+  add_model(linear_reg() |> set_engine("lm"))
+ajuste <- fit(flujo_casas, casas_entrena)
+```
+
+Aunque no es de interés particular para nosotros por el momento, examinamos
+los coeficientes (que no son tan simples de interpretar como discutiremos más adelante):
+
+```{r}
+ajuste |> pull_workflow_fit() |> broom::tidy() |> 
+  mutate(across(where(is.numeric), round, 2)) |> 
+  select(term, estimate) |> 
+  gt()
+```
+
+Nótese que:
+
+- En esta tabla están los coeficientes $\beta_i$ en las covariables que creamos a partir 
+de las variables de entrada.
+- El modelo lineal *no* tiene que ser lineal *en las variables que recibimos originalmente
+en la tabla de datos*.
+- En este ejemplo, convertimos algunas variables a *dummy*, y multiplicamos algunas
+variables de área por esas variables dummy.
+
+Finalmente, evaluamos el desempeño sobre las ventas normales:
+
+```{r}
+metricas <- metric_set(mape, mae, rmse, rsq)
+casas_prueba_normal <- testing(casas_split) |> 
+  filter(condicion_venta == "Normal")
+metricas(casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)), 
+     truth = precio_miles, estimate = .pred) |> 
+  gt() |> fmt_number(.estimate, decimals = 2)
+```
+
+## No linealidad y splines
+
+En algunos casos, la relación de una variable de entrada con la predicción es no lineal.
+Podemos entonces incluír entradas derivadas de la original usando transformaciones
+no lineales: por ejemplo, transformar entradas usando el logaritmo, o agregar
+el cuadrado o la raíz de las variables de entrada.
+
+Una de las maneras más simples y menos problemáticas de hacer esto es usando 
+*splines naturales* para modelar, que son funciones cúbicas por tramos
+dos veces diferenciables. Los tramos están definidos por *nudos* que podemos
+definir por ejemplo igualmente espaciados en los datos. 
+
+```{r}
+valores_x <- seq(-10, 110, 1)
+base_splines <- splines::ns(x = valores_x, knots = c(33, 66), 
+                            Boundary.knots = c(0, 100))
+spline_1 <- base_splines %*% c(1, 1, 1)
+spline_2 <- base_splines %*% c(-0.1, 2, 1)
+tibble(x = valores_x, y = spline_1, spline = 1) |> 
+bind_rows(tibble(x = valores_x, y = spline_2, spline = 2)) |> 
+  ggplot(aes(x = x, y = y, group = spline, colour = factor(spline))) + 
+  geom_point() + geom_line() +
+  geom_vline(xintercept = c(0, 33, 66, 100), colour = "red")
+```
+
+Estos dos son ejemplos de funciones cúbicas por tramos y dos veces diferenciables,
+con nudos en 0, 33, 66 y 100. Su forma particular depende de tres coeficientes,
+que pueden pensarse también como definidos por dónde tienen que pasar la curva
+en $y$ para los valores $x = 33, 66$ y $100$. Extrapolan linealmente fuera del rango
+de los datos.
+
+La ventaja de utilizar estos splines es que son estables en el cálculo, pues
+a lo más utilizan potencias cúbicas, y la complejidad puede aumentarse 
+incrementando el número de nodos.
+
+### Ejemplo
+
+Revisamos nuestro ejemplo de rendimiento de coches:
+
+```{r, message = FALSE}
+library(tidyverse)
+library(gt)
+auto <- read_csv("../datos/auto.csv")
+datos <- auto[, c('name', 'weight','year', 'mpg', 'displacement')]
+datos <- datos %>% mutate(
+  peso_kg = weight * 0.45359237,
+  rendimiento_kpl = mpg * (1.609344 / 3.78541178), 
+  año = year)
+```
+
+Vamos a separa en muestra de entrenamiento y de prueba estos datos. Podemos
+hacerlo como sigue (75% para entrenamiento aproximadamente en este caso, así
+obtenemos alrededor de 100 casos para prueba):
+
+```{r, message = FALSE}
+library(tidymodels)
+set.seed(121)
+datos_split <- initial_split(datos, prop = 0.75)
+datos_entrena <- training(datos_split)
+datos_prueba <- testing(datos_split)
+```
+
+Vamos a usar año y peso de los coches para predecir su rendimiento:
+
+```{r}
+ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl, colour = año)) +
+  geom_point()
+```
+
+Nuestra receta incluye la transformación no lineal de splines:
+
+```{r}
+receta_lineal <- recipe(rendimiento_kpl ~ peso_kg + año, datos_entrena) |> 
+  step_ns(peso_kg, deg_free = 3) |> 
+  step_ns(año, deg_free = 2)
+mod_lineal <- linear_reg() |>  
+  set_engine("lm")  
+flujo <- workflow() |>  
+  add_recipe(receta_lineal) |> 
+  add_model(mod_lineal)
+```
+
+Los datos de entrada son los siguientes:
+
+```{r}
+juice(prep(receta_lineal)) |> head() |> gt()
+```
+
+Nótese que tenemos 4 entradas en lugar de las 2 originales, pues
+creamos dos transformaciones no lineales de *peso_kg*. El modelo es lineal
+en estas 4 variables, pero no en las 2 originales. Ajustamos:
+
+
+```{r}
+flujo_ajustado <- fit(flujo, datos_entrena)
+```
+
+Y ahora podemos graficar los resultados y vemos cómo pudimos capturar la 
+relación no lineal entre peso y rendimiento:
+
+
+```{r, fig.width=5, fig.height=3}
+dat_graf <- tibble(peso_kg = seq(900, 2200, by = 10)) %>% 
+  crossing(tibble(año = c(70, 75, 80)))
+dat_graf <- dat_graf %>% 
+  mutate(pred_1 = predict(flujo_ajustado, dat_graf) %>% pull(.pred))
+ggplot(datos_entrena, aes(x = peso_kg, group = año, colour = año)) +
+  geom_point(aes(y = rendimiento_kpl), alpha = 0.6) + 
+  geom_line(data = dat_graf, aes(y = pred_1),  size = 1.2)
+```
+Los grados de libertad también pueden afinarse utilizando un conjunto de validación
+como hicimos antes en vecinos más cercanos.
+
+
+
+### Ejemplo: casas {-}
+
+Por ejemplo, podríamos incluir un efecto no lineal de area_lote:
+
+```{r}
+receta_casas <- recipe(precio_miles ~ 
+           nombre_zona + 
+           area_hab_m2 + area_garage_m2 + area_sotano_m2 + 
+           area_lote_m2 + 
+           año_construccion + 
+           calidad_gral + calidad_garage + calidad_sotano + 
+           num_coches  + 
+           aire_acondicionado + condicion_venta, 
+           data = casas_entrena) |> 
+  step_filter(condicion_venta == "Normal") |> 
+  step_select(-condicion_venta, skip = TRUE) |> 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) |>
+  step_novel(nombre_zona, calidad_sotano, calidad_garage) |> 
+  step_unknown(calidad_sotano, calidad_garage) |> 
+  step_other(nombre_zona, threshold = 0.02, other = "otras") |> 
+  step_mutate(area_sotano_m2 = ifelse(is.na(area_sotano_m2), 0, area_sotano_m2)) |> 
+  step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |> 
+  step_ns(area_lote_m2, deg_free = 3) |> 
+  step_dummy(nombre_zona, calidad_gral, calidad_garage, calidad_sotano, aire_acondicionado) |> 
+  step_interact(terms = ~ area_hab_m2:starts_with("calidad_gral")) |> 
+  step_interact(terms = ~ area_hab_m2:starts_with("nombre_zona")) |> 
+  step_interact(terms = ~ area_garage_m2:starts_with("calidad_garage")) |> 
+  step_interact(terms = ~ area_sotano_m2: starts_with("calidad_sotano")) |> 
+  step_nzv(all_predictors(), freq_cut = 500 / 1, unique_cut = 1)
+```
+
+
+```{r}
+flujo_casas <- workflow() |> 
+  add_recipe(receta_casas) |> 
+  add_model(linear_reg() |> set_engine("lm"))
+ajuste <- fit(flujo_casas, casas_entrena)
+```
+
+Finalmente, evaluamos el desempeño sobre las ventas normales, y obtenemos una
+mejoría con respecto a nuestro modelo anterior:
+
+```{r}
+metricas <- metric_set(mape, mae, rmse, rsq)
+casas_prueba_normal <- testing(casas_split) |> 
+  filter(condicion_venta == "Normal")
+metricas(casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)), 
+     truth = precio_miles, estimate = .pred) |> 
+  gt() |> fmt_number(.estimate, decimals = 2)
+```
