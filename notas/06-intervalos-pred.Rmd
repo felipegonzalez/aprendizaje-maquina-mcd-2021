@@ -2,6 +2,7 @@
 
 ```{r, include = FALSE}
 ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
+knitr::opts_chunk$set(fig.width=4, fig.height=3) 
 cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 scale_colour_discrete <- function(...) {
   ggplot2::scale_colour_manual(..., values = cbb_palette)
@@ -89,25 +90,26 @@ de prueba, y calculamos los cuantiles $q_{0.05}$ y $q_{0.95}$.
 3. Supongamos que $(\mathbf{x}, \mathbf{y})$ es una nueva observación. Su intervalo
 predictivo es $C(\mathbf{x}) = [\hat{f}(\mathbf{x}) - q_{0.05}, \hat{f}(\mathbf{x}) + q_{0.95}]$
 
-Entonces, sin requerir supuestos (ver [Distribution-Free Predictive Inference for Regression](https://www.stat.cmu.edu/~ryantibs/papers/conformal.pdf)), tenemos que 
-$P(\mathbf{y} \in C(\mathbf{x}))\geq 0.90$ ( y de hecho, si la muestra de prueba
-no es muy chica, la cobertura real es aproximadamente de 90\%)
+Entonces, solamente requiriendo muestras iid, sin ningún otro supuesto
+acerca del predictor o el ajuste (ver [Distribution-Free Predictive Inference for Regression](https://www.stat.cmu.edu/~ryantibs/papers/conformal.pdf)), tenemos que 
+$$P(\mathbf{y} \in C(\mathbf{x}))\geq 0.90$$ 
+Si la muestra de prueba no es muy chica, la cobertura real es cercana al 90\%.
 
-Esta cobertura es robusta, sin embargo, se requieren algunos elementos adicionales
+Esta cobertura es confiable y robusta, sin embargo, se requieren algunos elementos adicionales
 para que los intervalos sean más útiles. Quisiéramos también que la cobertura
 local alrededor de cualquier región del las $x$'s sea cercana al 90%. Esto es más
 dificíl de alcanzar, y en general, solo se satisface si se complen ciertos supuestos
 que en general no se pueden checar. En lugar de eso, una revisión básica
 que podemos hacer es:
 
-- Para cada nivel de predicción $\hat{y} = \hat{f}(x)$, los intervalos tienen cobertura de 90%
+- Para cada nivel de predicción $\hat{y} = \hat{f}(x)$, los intervalos tienen cobertura de 90%.
 
 
 
 ## Ejemplo: bodyfat
 
 En el ejemplo de grasa corporal utilizamos lasso para seleccionar un modelo. Podemos
-construir intervalos predictivos como sigue:
+construir intervalos predictivos (*split-conformal*) como sigue:
 
 
 ```{r, message = FALSE}
@@ -168,7 +170,8 @@ ggplot(preds_gc_tbl, aes(x = .pred, ymin = inf, ymax = sup, y = grasacorp)) +
   geom_linerange(alpha = 0.5) + coord_obs_pred()
 ```
 Donde vemos que la cobertura parece ser similar para todos los rangos de valores
-de predicción. Podemos hacer también una tabla simple como la que sigue:
+de predicción. Podemos hacer también una tabla simple como la que sigue para verificar
+la cobertura:
 
 ```{r}
 n_grupos <- 4 # podemos usar más grupos si tenemos más datos
@@ -256,10 +259,11 @@ ggplot(preds_tbl, aes(x = peso_kg, y =  rendimiento_kpl, ymin = inf, ymax = sup)
   geom_point(colour = "red") 
 ```
 
-Y vemos que aunque nuestros intervalos son del 95%, tienen baja cobertura para
+Y vemos que aunque nuestros intervalos son del 90%, tienen baja cobertura para
 pesos bajos y sobrecubren para pesos altos. Estos intervalos son poco útiles
 por esa razón: exageran la incertidumbre para valores altos de peso y 
-la subestiman para valores bajos de peso.
+la subestiman para valores bajos de peso. Notamos lo mismo comparando los
+valores de $y$ dada la predicción:
 
 ```{r}
 ggplot(preds_tbl, aes(x = .pred, y = rendimiento_kpl, ymin = inf, ymax = sup)) +
@@ -267,8 +271,10 @@ ggplot(preds_tbl, aes(x = .pred, y = rendimiento_kpl, ymin = inf, ymax = sup)) +
   geom_point(colour = "red") 
 ```
 
+Finalmente, verificamos que la cobertura no es uniforme:
+
 ```{r}
-n_grupos <- 8 # podemos usar más grupos si tenemos más datos
+n_grupos <- 6 # podemos usar más grupos si tenemos más datos
 preds_tbl |> 
   rename(y = rendimiento_kpl) |> 
   mutate(grupo_pred = cut_number(.pred, n = n_grupos)) |> 
@@ -277,8 +283,7 @@ preds_tbl |>
   mutate(error_e = 2 * sqrt(cobertura * (1- cobertura) / n)) |> 
   gt() |> fmt_number(where(is_double), decimals = 2)
 ```
-Y vemos que las coberturas son demasiado altas para valores bajos de la predicción
-y tienden a ser bajas para valores altos de la predicción
+
 
 Podemos mejorar los intervalos usando regresión cuantílica. Primero dividimos la
 muestra de prueba en una muestra de calibración y otra de evaluación:
@@ -298,12 +303,16 @@ calibracion_tbl <- calibracion_tbl |>
          inf_q = predict(inf_qreg, newdata = calibracion_tbl))
 ```
 
+Los nuevos intervalos se ven como sigue:
 
 ```{r}
 ggplot(calibracion_tbl, aes(x = peso_kg, y =  rendimiento_kpl, ymin = inf_q, ymax = sup_q)) +
   geom_linerange() +
   geom_point(colour = "red") 
 ```
+
+Finalmente verificamos con la muestra de evaluación (en este punto, podemos ajustar la regresión
+cuantílica si es necesario):
 
 ```{r}
 eval_tbl <- eval_tbl |> 
@@ -325,7 +334,5 @@ eval_tbl |>
   ylim(c(0,1.1))
 ```
 
-
-Y esta construcción da intervalos que a distintos niveles de predicción
-tiene cobertura condicional cercana al 90%
+En este caso, podemos construir nuevos intervalos utilizando los datos de evaluación.
 
