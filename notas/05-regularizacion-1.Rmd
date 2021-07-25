@@ -505,7 +505,7 @@ lasso se puede reescribir como el problema de resolver
 
 $$\min_a D(\beta)$$
 sujeto a
-$$\sum_{i=1}^p \beta_j^2 < t$$
+$$\sum_{i=1}^p |\beta_j| < t$$
 En la gráfica siguiente (tomada de @ESL), lasso está a la izquierda y ridge está 
 a la derecha, las curvas rojas son curvas de nivel de la suma de cuadrados $D(a)$,
 y $\hat{\beta}$ es el estimador usual de mínimos cuadrados de los coeficientes (sin penalizar).

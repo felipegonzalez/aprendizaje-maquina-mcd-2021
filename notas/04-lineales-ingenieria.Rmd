@@ -185,8 +185,9 @@ receta_dummy_prep |> juice() |>
 ```
 
 Nótese que no hay columna para el nivel TA, que tomamos como referencia. Incluir esta
-columna sería redundante, pues tenemos una constante en el predictor. Estas son las
-columnas que incluímos en el modelo.
+columna sería redundante, pues tenemos una constante en el predictor. En general,
+cuando una variable categórica tiene $k$ niveles, esta codificación produce $k-1$ columnas
+binarias.
 
 Veamos qué pasa cuando preprocesamos datos de prueba:
 
@@ -237,12 +238,11 @@ casas_entrena |> count(nombre_zona) |>
 ```
 
 En este caso, tenemos muchas categorías, algunas con muy pocos datos, y es posible que observemos nuevos datos. Una técnica es agrupar los datos de baja cardinalidad
-en un nuevo nivel:
+en un nuevo nivel (incluyendo categorías no observadas en entrenamiento):
 
 ```{r}
 receta_vecindario_1 <- 
   recipe( ~ nombre_zona, casas_entrena) |>
-  step_novel(nombre_zona, new_level = "nuevo") |> 
   step_other(nombre_zona, threshold = 0.01, other = "otras") 
 receta_vecindario <- receta_vecindario_1 |> 
   step_dummy(nombre_zona)
@@ -261,6 +261,18 @@ prueba_casas <- testing(casas_split)
 prueba_casas$nombre_zona[1] <- "Xochimilco"
 datos <- bake(prep(receta_vecindario), prueba_casas)
 datos |> head() |>  gt() |> tab_options(table.font.size = 10)
+```
+El proceso general es (ver por ejemplo [esta lista](https://recipes.tidymodels.org/articles/Ordering.html)):
+
+```{block2, type="comentario"}
+**Variables categóricas**
+  
+1. Establecemos los niveles que puede tener cada variable, incluyendo 
+la posibilidad de categorías nuevas al momento de predecir, y categorías para valores no disponibles (NAs) (es posible también imputar con algún método en caso necesario).
+2. Reorganizamos factores dependiendo del problema. Por ejemplo, incluir categorías de baja frecuencia
+en una categoría separada, o manipulaciones ad-hoc dependiendo del problema. 
+3.  Sustituimos variables categóricas con $K$ niveles en $K-1$ columnas indicadoras de los niveles (estableciendo) alguna categoría como referencia.
+
 ```
 
 ## Interacciones
@@ -309,12 +321,15 @@ variables.
 **Pregunta**. ¿puedes pensar en otros casos donde las interacciones deben
 jugar un papel importante?
 
-```{block2, type="resumen"}
-- Una manera simple de incluir interacciones en nuestro predictor entre dos variables
-numéricas $x_1$ y $x_2$ es incluír también como entrada el producto $x_3 = x_1x_2$.
-- Cuando queremos producir interacciones entre una variable categórica $g$ y
-una numérica $x$, podemos hacer el mismo procedimiento multiplicando la variable categórica
-por cada una de las variable dummy que creamos a partir de $g$. Esto en efecto produce una pendiente para $x$ dependiendo del valor que toma $g$.
+```{block2, type="comentario"}
+**Interacciones**
+
+1. Transformamos las variables categóricas a dummies. Transformamos las variables
+numéricas si es necesario (normalizar, aplicar transformación no lineal, etc.)
+2. Incluimos interacciones de la siguiente forma:
+  - Para la interaccion de dos variables
+numéricas $x_1$ y $x_2$ agregamos el producto $x_3 = x_1x_2$.
+  - Para interacción de una variable categórica $g$ con una numérica $x$ podemos hacer el mismo procedimiento multiplicando la variable categórica por cada una de las variable dummy que creamos a partir de $g$. Esto en efecto produce una pendiente para $x$ dependiendo del valor que toma $g$.
 ```
 
 
@@ -462,7 +477,7 @@ La ventaja de utilizar estos splines es que son estables en el cálculo, pues
 a lo más utilizan potencias cúbicas, y la complejidad puede aumentarse 
 incrementando el número de nodos.
 
-### Ejemplo
+### Ejemplo {-}
 
 Revisamos nuestro ejemplo de rendimiento de coches:
 
