@@ -84,26 +84,39 @@ Aprovechamos naturalmente nuestra división de la muestra para producir
 intervalos la primer garantía básica de cobertura, que por el momento supondremos
 que queremos que sea $90%$:
 
-1. Construirmos nuestro predictor $\hat{f}(x)$ con la muestra de entrenamiento
-2. Consideramos los residuales $\mathbf{y}_1 - \hat{f}(\mathbf{x}_i)$ en la muestra
-de prueba, y calculamos los cuantiles $q_{0.05}$ y $q_{0.95}$.  
-3. Supongamos que $(\mathbf{x}, \mathbf{y})$ es una nueva observación. Su intervalo
-predictivo es $C(\mathbf{x}) = [\hat{f}(\mathbf{x}) - q_{0.05}, \hat{f}(\mathbf{x}) + q_{0.95}]$
+```{block2, type = "comentarios"}
+**Intervalos predictivos con muestra de prueba**
 
-Entonces, solamente requiriendo muestras iid, sin ningún otro supuesto
+1. Construirmos nuestro predictor $\hat{f}(x)$ con la muestra de entrenamiento
+2. Consideramos los residuales $\mathbf{y}_i - \hat{f}(\mathbf{x}_i)$ en la muestra
+de prueba, y calculamos su cuantiles $q_{0.05}$ y $q_{0.95}$.  
+3. Supongamos que $(\mathbf{x}, \mathbf{y})$ es una nueva observación. Su intervalo
+predictivo es $I(\mathbf{x}) = [\hat{f}(\mathbf{x}) - q_{0.05}, \hat{f}(\mathbf{x}) + q_{0.95}]$
+```
+
+
+Entonces, solamente requiriendo muestras independientes tomadas de la misma
+población, sin ningún otro supuesto
 acerca del predictor o el ajuste (ver [Distribution-Free Predictive Inference for Regression](https://www.stat.cmu.edu/~ryantibs/papers/conformal.pdf)), tenemos que 
-$$P(\mathbf{y} \in C(\mathbf{x}))\geq 0.90$$ 
-Si la muestra de prueba no es muy chica, la cobertura real es cercana al 90\%.
+$$P(\mathbf{y} \in I(\mathbf{x}))\geq 0.90.$$ 
+Adicionalmente, si la muestra de prueba no es muy chica, la cobertura real es cercana al 90\%.
 
 Esta cobertura es confiable y robusta, sin embargo, se requieren algunos elementos adicionales
 para que los intervalos sean más útiles. Quisiéramos también que la cobertura
-local alrededor de cualquier región del las $x$'s sea cercana al 90%. Esto es más
+local alrededor de cualquier región del las $x$'s sea cercana al 90% (cobertura
+condicional). Esto es más
 dificíl de alcanzar, y en general, solo se satisface si se complen ciertos supuestos
-que en general no se pueden checar. En lugar de eso, una revisión básica
-que podemos hacer es:
+que en general es difícil verificar si se cumplen o no realmente, como la linealidad
+en problemas de dimensión alta.
+
+Un chequeo básico que podemos hacer es el siguiente:
 
 - Para cada nivel de predicción $\hat{y} = \hat{f}(x)$, los intervalos tienen cobertura de 90%.
 
+Como esto sólo involucra las predicciones, los valores observados, y los intervalos predictivos,
+esto puede checarse en la práctica con una tabla o gráfica. En caso de que
+no se cumpla esta condición, podemos usar una muestra independiente adicional 
+de **calibración**, y mejorar esta cobertura condicional.
 
 
 ## Ejemplo: bodyfat
@@ -118,20 +131,15 @@ library(tidymodels)
 library(gt)
 dat_grasa <- read_csv(file = '../datos/bodyfat.csv') 
 set.seed(183)
-grasa_particion <- initial_split(dat_grasa, 0.7)
+grasa_particion <- initial_split(dat_grasa, 0.5)
 grasa_ent <- training(grasa_particion)
 grasa_pr <- testing(grasa_particion)
-```
-
-```{r}
-grasa_receta <- recipe(grasacorp ~ ., grasa_ent) %>% 
-  step_normalize(all_predictors()) %>% 
-  prep()
+grasa_receta <- recipe(grasacorp ~ ., grasa_ent) 
 # lasso
-modelo_2 <- linear_reg(mixture = 1, penalty = 0.5) %>% 
+modelo_gc <- linear_reg(mixture = 1, penalty = 1.5) %>% 
   set_engine("glmnet", lambda.min.ratio = 1e-20) 
 flujo_2 <- workflow() %>% 
-  add_model(modelo_2) %>% 
+  add_model(modelo_gc) %>% 
   add_recipe(grasa_receta)
 # ajuste
 flujo_2 <- flujo_2 %>% fit(grasa_ent)
@@ -145,7 +153,7 @@ preds_gc_tbl <- predict(flujo_2, grasa_pr) |>
   bind_cols(grasa_pr) |> 
   mutate(residual = grasacorp - .pred)
 ggplot(preds_gc_tbl, aes(x = residual)) +
-  geom_histogram(binwidth = 2.5)
+  geom_histogram(binwidth = 2)
 intervalo_r <- quantile(preds_gc_tbl |> pull(residual), probs = c(0.05, 0.95))
 intervalo_r |> round(2)
 ```
@@ -167,7 +175,7 @@ contra intervalos y observados en el eje $y$.
 ggplot(preds_gc_tbl, aes(x = .pred, ymin = inf, ymax = sup, y = grasacorp)) +
   geom_abline() +
   geom_point(colour = "red") +
-  geom_linerange(alpha = 0.5) + coord_obs_pred()
+  geom_linerange(alpha = 0.5) 
 ```
 Donde vemos que la cobertura parece ser similar para todos los rangos de valores
 de predicción. Podemos hacer también una tabla simple como la que sigue para verificar
@@ -245,7 +253,6 @@ forma:
 preds_tbl <- preds_tbl |> 
   mutate(inf = .pred + cuantiles_e["5%"], 
          sup = .pred + cuantiles_e["95%"])
-preds_tbl
 ```
 Por definición, estos intervalos tienen cobertura promedio sobre un conjunto 
 de prueba de aproximadamente el 90%. 
@@ -268,10 +275,10 @@ valores de $y$ dada la predicción:
 ```{r}
 ggplot(preds_tbl, aes(x = .pred, y = rendimiento_kpl, ymin = inf, ymax = sup)) +
   geom_linerange() +
-  geom_point(colour = "red") 
+  geom_point(colour = "red") + coord_obs_pred()
 ```
 
-Finalmente, verificamos que la cobertura no es uniforme:
+También podemos verificar con una tabla que la cobertura no es uniforme:
 
 ```{r}
 n_grupos <- 6 # podemos usar más grupos si tenemos más datos
@@ -289,7 +296,7 @@ Podemos mejorar los intervalos usando regresión cuantílica. Primero dividimos 
 muestra de prueba en una muestra de calibración y otra de evaluación:
 
 ```{r}
-lambda <- 10
+lambda <- 1
 calib_eval_split <- initial_split(preds_tbl, 0.5)
 calibracion_tbl <- training(calib_eval_split)
 eval_tbl <- testing(calib_eval_split)
@@ -336,3 +343,110 @@ eval_tbl |>
 
 En este caso, podemos construir nuevos intervalos utilizando los datos de evaluación.
 
+## Ejemplo: cambios en el modelo
+
+En algunos casos podemos seleccionar una variable respuesta diferente o la función
+de pérdida para obtener mejores propiedades de nuestros intervalos. En este
+ejemplo, escogemos como variable respuesta el precio por metro cuadrado sobre
+el área habitable.
+
+```{r}
+source("../R/casas_traducir_geo.R")
+set.seed(83)
+casas_split <- initial_split(casas, prop = 0.75)
+casas_entrena <- training(casas_split)
+receta_casas <- recipe(precio_m2_miles ~ 
+           nombre_zona + 
+           area_hab_m2 + area_garage_m2 + area_sotano_m2 + 
+           area_2o_piso_m2 +
+           area_lote_m2 + 
+           año_construccion + 
+           calidad_gral + calidad_garage + calidad_sotano +
+           condicion_gral + 
+           num_coches  + 
+           aire_acondicionado + condicion_venta, 
+           data = casas_entrena) |> 
+  step_filter(condicion_venta == "Normal") |> 
+  step_select(-condicion_venta, skip = TRUE) |> 
+  step_mutate(tiene_2o_piso = ifelse(area_2o_piso_m2 == 0, 1, 0)) |> 
+  step_mutate(area_sotano_m2 = ifelse(is.na(area_sotano_m2), 0, area_sotano_m2)) |> 
+  step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |> 
+  step_ratio(starts_with("area"), denom = denom_vars(area_hab_m2)) |> 
+  step_novel(nombre_zona, calidad_sotano, calidad_garage) |> 
+  step_ns(calidad_gral, deg_free = 2) |> 
+  step_ns(condicion_gral, deg_free = 2) |> 
+  step_ns(starts_with("area_lote"), deg_free = 3) |> 
+  step_ns(starts_with("año_construccion"), deg_free = 3) |> 
+  step_unknown(calidad_sotano, calidad_garage) |> 
+  step_other(nombre_zona, threshold = 0.01, other = "otras") |> 
+  step_dummy(nombre_zona, calidad_garage, calidad_sotano, aire_acondicionado) |> 
+  step_interact(terms = ~ starts_with("area_garage_m2_o"):starts_with("calidad_garage")) |> 
+  step_interact(terms = ~ starts_with("area_sotano_m2_o"): starts_with("calidad_sotano")) |> 
+  step_nzv(all_predictors(), freq_cut = 500 / 1, unique_cut = 1)
+```
+
+Usaremos regresión ridge:
+
+```{r}
+flujo_casas <- workflow() |> 
+  add_recipe(receta_casas) |> 
+  add_model(linear_reg(mixture = 0, penalty = 0.005) |> 
+            set_engine("glmnet", lambda.min.ratio = 1e-20))  
+ajuste <- fit(flujo_casas, casas_entrena)
+```
+
+Para medir el desempeño convertimos a la variable de precio multiplicando
+la predicción por el área habitable:
+
+```{r}
+metricas <- metric_set(mape, mae, rmse, rsq)
+casas_prueba_normal <- testing(casas_split) |> 
+  filter(condicion_venta == "Normal")
+metricas(casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)), 
+     truth = precio_miles, estimate = .pred * area_hab_m2 ) |> 
+  gt() |> fmt_number(.estimate, decimals = 2)
+```
+
+
+La distribución de los residuales de ve como sigue:
+
+```{r}
+preds_tbl <- casas_prueba_normal |> 
+  bind_cols(predict(ajuste, casas_prueba_normal)) |> 
+  mutate(residual = precio_m2_miles - .pred)
+preds_tbl |> ggplot(aes(x = residual)) + geom_histogram(binwidth = 0.05)
+intervalo_r <- quantile(preds_tbl$residual, c(0.05, 0.95))
+```
+
+
+Y nuestros intervalos se ven razonables, con menos incertidumbre para casas
+más baratas y más incertidumbre para las más caras:
+
+```{r}
+set.seed(832)
+preds_tbl <- preds_tbl |> 
+  mutate(inf = .pred + intervalo_r[1], sup = .pred + intervalo_r[2]) |> 
+  mutate(pred_precio = .pred * area_hab_m2) |> 
+  mutate(inf_precio = area_hab_m2 * inf, sup_precio = area_hab_m2 * sup)
+ggplot(preds_tbl |> sample_n(200), aes(x = pred_precio, y = precio_miles, ymin = inf_precio, 
+                      ymax = sup_precio)) +
+  geom_abline() + 
+  geom_linerange() +
+  geom_point(colour = "red") + coord_obs_pred()
+```
+
+Checamos finalmente que la calibración es razonable con una tabla:
+
+```{r}
+n_grupos <- 8 # podemos usar más grupos si tenemos más datos
+preds_tbl |> 
+  rename(y = precio_miles) |> 
+  mutate(grupo_pred = cut_number(pred_precio, n = n_grupos)) |> 
+  group_by(grupo_pred) |> 
+  summarise(n = n(), cobertura = mean(y >= inf_precio & y <= sup_precio), 
+            pred_precio = mean(pred_precio)) |>
+  mutate(error_e = 2 * sqrt(cobertura * (1- cobertura) / n)) |> 
+  ggplot(aes(x = pred_precio, y = cobertura, ymin = cobertura - error_e, ymax = cobertura + error_e)) +
+  geom_hline(yintercept = 0.9, colour = "red") +
+  geom_point() + geom_linerange() + ylim(c(0.5, 1.1))
+```
