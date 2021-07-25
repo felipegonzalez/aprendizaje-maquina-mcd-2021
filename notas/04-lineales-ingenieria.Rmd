@@ -559,7 +559,8 @@ como hicimos antes en vecinos más cercanos.
 
 ### Ejemplo: casas {-}
 
-Por ejemplo, podríamos incluir un efecto no lineal de area_lote:
+Por ejemplo, podríamos incluir un efecto no lineal de area_lote, calidad y condición
+general y año de construcción:
 
 ```{r}
 receta_casas <- recipe(precio_miles ~ 
@@ -568,19 +569,23 @@ receta_casas <- recipe(precio_miles ~
            area_lote_m2 + 
            año_construccion + 
            calidad_gral + calidad_garage + calidad_sotano + 
+           condicion_gral + 
            num_coches  + 
            aire_acondicionado + condicion_venta, 
            data = casas_entrena) |> 
   step_filter(condicion_venta == "Normal") |> 
   step_select(-condicion_venta, skip = TRUE) |> 
-  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) |>
+  
   step_novel(nombre_zona, calidad_sotano, calidad_garage) |> 
   step_unknown(calidad_sotano, calidad_garage) |> 
   step_other(nombre_zona, threshold = 0.02, other = "otras") |> 
   step_mutate(area_sotano_m2 = ifelse(is.na(area_sotano_m2), 0, area_sotano_m2)) |> 
-  step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |> 
+  step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |>
+  step_ns(año_construccion, deg_free = 2) |> 
+  step_ns(calidad_gral, deg_free = 2) |> 
+  step_ns(condicion_gral, deg_free = 2) |> 
   step_ns(area_lote_m2, deg_free = 3) |> 
-  step_dummy(nombre_zona, calidad_gral, calidad_garage, calidad_sotano, aire_acondicionado) |> 
+  step_dummy(nombre_zona,  calidad_garage, calidad_sotano, aire_acondicionado) |> 
   step_interact(terms = ~ area_hab_m2:starts_with("calidad_gral")) |> 
   step_interact(terms = ~ area_hab_m2:starts_with("nombre_zona")) |> 
   step_interact(terms = ~ area_garage_m2:starts_with("calidad_garage")) |> 
