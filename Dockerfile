@@ -42,5 +42,5 @@ RUN install2.r --error \
     imager
 
 RUN install2.r reticulate tensorflow keras \
-    xgboost quanreg
+    xgboost quantreg
 
