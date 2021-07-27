@@ -15,108 +15,91 @@ En todos los casos hasta ahora, vimos cómo hacer:
 - Evaluar un conjunto razonablemente grande de predicciones 
 con el error de predicción, que es un promedio de la pérdida seleccionada.
 
-Cuando vamos a hacer muchas predicciones, y la pérdida se alínea con 
-los costos reales de la decisión, entonces minimizar la pérdida promedio (por ejemplo
-cuadrática, absoluta o relativa) 
-puede ser un criterio suficiente para decidir cómo utilizar las predicciones en 
-nuestra decisión. Esto es especialmente cierto si la pérdida promedio es chica 
-y no detectamos errores atípicos que podrían ser muy costosos. 
+Este enfoque es razonable en algunos casos y otros no. Es razonable cuando:
 
-En el ejemplo de la primera sección de lectura de medidores, el
-resultado tuvo precisión relativamente alta, y quizá unos cuantos errores grandes en algunas
-lecturas pueden corregirse posteriormente (reclamos, por ejemplo) sin un costo 
-adicional muy grande. Otro ejemplo es obtener las coordenadas del rectángulo que
-acota un objeto de interés en una imagen para crear álbumes de fotografía automatizados.
-En este caso, podríamos ver si el uso de las predicciones puntuales son suficientes
-para que esos álbumes sean una característica deseable para los usuarios.
+- El error de predicción es relativamente chico (tenemos predicciones muy precisas),
+ cualquier pérdida usual que utilicemos funciona apropiadamente. 
+- Los errores son poco costosos, especialmente si comparamos con la mejoría en la automatización
+del proceso.
 
-Sin embargo, en muchos problemas reales:
+Un ejemplo del primer caso es el de la lectura de medidores: en este caso,
+nuestro modelo es bastante preciso y las predicciones puntuales son suficientes.
+Un ejemplo del segundo caso es hacer recomendaciones de películas o productos: la automatización
+en el proceso presenta buenas ganancias, y recomendar una película incorrecta no
+es grave mientras que en promedio tengamos buenos aciertos.
 
-- La decisión que se toma tiene costos asociados más complicados que en un principio
-pueden ser difíciles de cuantificar.
-- Estamos tomando un número relativamente chico de decisiones, y existe el riesgo
-de predicciones considerablemente malas.
+Sin embargo, muchos problemas de predicción no son así, y el error juega un papel importante:
 
-En estos casos, quisiéramos expresar con más precisión y de manera útil la incertidumbre que tenemos
-acerca de predicciones particulares, y el error promedio puede ser engañoso. Por ejemplo:
+- Los errores pueden ser relativamente grandes, de forma que dada una predicción,
+el valor observado puede producir costos grandes.
+- Nuestras predicciones van a usarse *downstream* para tomar una serie de decisiones
+que no conocemos de antemano, de forma que la estructura de costos de un error es compleja y sólo parcialmente definida. Ninguna pérdida usual refleja correctamente el costo-beneficio de usar un modelo.
 
+Ejemplos del primero puede ser el de predicción de precios de casas: errores de 20\% en
+el precio puede convertir una compra deseable en una que produce pérdidas grandes. En el segundo,
+un ejemplo es la estimación futura de compras de un cliente (asociado al valor presente
+de los clientes o usuarios): dependiendo de esta estimación puede ser que tomemos una
+serie de decisiones acerca de productos, promociones, etc. (no definidos de antemano
+generalmente) para ofrecer que tienen consecuencias
+considerables. Otro ejemplo es predecir si en una tomografía hay evidencia de cáncer:
+aún cuando la probabilidad de que sea una imagen "normal" es alta (digamos 75%), una probablidad de 20% de que sea cancerígena debe ser puesta frente a los tomadores de decisiones.
 
-- Queremos construir un portafolio de bienes raíces usando un modelo predictivo de
-sus precios. En este caso, el riesgo de cada compra debe expresarse de manera clara.
-Compras con mucha incertidumbre pueden ser apropiadas para algunos compradores, pero
-poco apropiadas para otros. En estos casos, requerimos expresar la incertidumbre asociada
-con cada compra.
-- Queremos predecir los resultados de una elección a partir de encuestas, datos macroeconómicos,
-etc. Usualmente estos resultados tienen incertidumbre considerable, y para evaluar y utilizar
-correctamente esos pronósticos es necesario saber su incertidumbre.
+En todos estos casos, es importante producir alguna cuantificación de la incertidumbre
+en lugar de una predicción puntual solamente (un solo precio, o una sola categoría "Normal").
+Esta cuantificación puede ofrecerse a los tomadores de decisiones, y puede utilizarse también
+en simulaciones de decisiones tomadas *downstream*.
 
-En estos casos, puede ser útil construir, en lugar de predicciones puntuales, **intervalos
-de predicción**. Hay muchos enfoques para construir estos intervalos: puedes estudiarlo
-en un curso estándar de regresión, regresión bayesiana (ve por ejemplo
-@GelmanHill), y también 
-existen métodos computacionales basados en simulación de aplicación más general.
-Siempre es mejor tener intervalos
-*construidos apropiadamente* que no tenerlos, pero tenemos que considerar que esto
-requiere más recursos y riesgos, en particular:
-
-- (Recursos) Costo computacional adicional considerable y/o
-- (Riesgos) Recaer en supuestos teóricos (muchas veces asintóticos) y diagnósticos de modelos, y
-- (Recursos) Validación adicional de modelos
-
-En caso de producir intervalos, es importante de cualquier forma checar directamente
-que nuestros rangos de incertidumbre son apropiados (para lo cual también es útil
-muestras de prueba independientes del entrenamiento). Sin muestras de prueba, 
-puede ser muy difícil evaluar qué tan buenas son nuestras estimaciones de la incertidumbre.
-Casi todos los modelos tienen fallas en este sentido.
-
-Por otro lado, en algunas aplicaciones tener un error *promedio* razonable es suficiente,
-necesitamos tomar un número relativamente grande de decisiones,
-con costos relativamente uniformes (desde el punto de vista del negocio o de daños posibles)
-los estimadores puntuales pueden ser suficientes cuando el error de predicción
-es suficientemente bajo.  Siempre revisa los errores individuales con la muestra prueba, y
-considera si es necesario calcular y checar intervalos predictivos.
+Una manera básica de cuantificar la incertidumbre es construir intervalos predictivos.
+En lugar de producir una predicción puntual $\hat{f}(x)$, producimos dos
+valores $[\hat{q}_1(x), \hat{q}_2(x)]$ donde es probable que caiga el valor 
+observado $y$. Por ejemplo, si construimos intervalos del 90%, quisiéramos entonces
+que se cumpla la garantía de cobertura siguiente:
+$$P(\mathbf{y}\in [\hat{q}_1(\mathbf{x}), \hat{q}_2(\mathbf{x})]) = 0.90$$
+donde la probabilidad es tomada sobre toda la población $(\mathbf{x}, \mathbf{y})$ de
+interés. Por ejemplo, para el precio de una casa, en lugar de producir una
+sola predicción de 120 mil dólares, produciríamos un intervalo de 50 a 180 mil dólares.
+Eso nos pone en una situación considerablemente distinta que si el intervalo 
+fuera de 110 a 130 mil dólares, por ejemplo para una decisión de una compañía de bienes
+raíces.
 
 
-## Intervalos con muestra de prueba
+## Inferencia predictiva conforme
 
-Veremos la el método *split-conformal* para construir intervalos para predicciones.
-Aprovechamos naturalmente nuestra división de la muestra para producir
-intervalos la primer garantía básica de cobertura, que por el momento supondremos
-que queremos que sea $90%$:
+Tradicionalmente, este tipo de intervalos predictivos se construyen bajo argumentos
+teóricos en modelos relativamente simples con supuestos fuertes que hay que checar.
+En aprendizaje de máquina, donde utilizamos predictores mucho más complejos que modelos
+lineales, en dimensión alta y con mecanismos complejos de limpieza y selección de variables,
+es muy difícil seguir esta ruta tradicional.
+
+En lugar de eso, utilizaremos la idea fundamental de división de muestras (entrenamiento
+-prueba) para producir intervalos con cobertura garantizada independientemente de si se
+cumplen o no ciertos supuestos teóricos. La idea es la siguiente:
 
 ```{block2, type = "comentarios"}
-**Intervalos predictivos con muestra de prueba**
+**Intervalos predictivos con muestra de prueba**.
 
-1. Construirmos nuestro predictor $\hat{f}(x)$ con la muestra de entrenamiento
-2. Consideramos los residuales $\mathbf{y}_i - \hat{f}(\mathbf{x}_i)$ en la muestra
-de prueba, y calculamos su cuantiles $q_{0.05}$ y $q_{0.95}$.  
-3. Supongamos que $(\mathbf{x}, \mathbf{y})$ es una nueva observación. Su intervalo
-predictivo es $I(\mathbf{x}) = [\hat{f}(\mathbf{x}) - q_{0.05}, \hat{f}(\mathbf{x}) + q_{0.95}]$
+Suponiendo que los datos se extraen de forma independiente de una misma población,
+
+1. Construimos con una muestra de entrenamiento (x_i, y_i) nuestro predictor $\hat{f}(x)$
+2. Usamos una muestra de prueba separada para evaluar el error promedio, y adicionalmente,
+calculamos los valores $\mathbf{r}_i = |\mathbf{y}_i - \hat{f}(\mathbf{x}_i)|$
+3. Si queremos intervalos del 90%, calculamos ahora  $q$, que es el cuantil 
+90% de los valores $\mathbf{r}_i$
+3. Para un nuevo valor de las entradas $\mathbf{x}$, nuestro intervalo es
+$$[\hat{f}(\mathbf{x}) - d, \hat{f}(\mathbf{x}) + d]$$
+
+Para esta nueva observación $(\mathbf{x}, \mathbf{y})$,
+
+$$P(\mathbf{y} \in[\hat{f}(\mathbf{x}) - d, \hat{f}(\mathbf{x}) + d])\gtrsim 0.90$$
+  
+donde la desigualdad quiere decir que la cobertura es al menos de 90%, y muy cercana
+a 90% si la muestra de prueba cumple $n\geq 100$. 
 ```
 
+La demostración es relativamente simple (especialmente el hecho de que la cobertura
+es mayor o igual a 90%) y no requiere ningún supuesto adicional acerca del predictor
+o al calidad del ajuste (ver [Distribution-Free Predictive Inference for Regression](https://www.stat.cmu.edu/~ryantibs/papers/conformal.pdf)).
 
-Entonces, solamente requiriendo muestras independientes tomadas de la misma
-población, sin ningún otro supuesto
-acerca del predictor o el ajuste (ver [Distribution-Free Predictive Inference for Regression](https://www.stat.cmu.edu/~ryantibs/papers/conformal.pdf)), tenemos que 
-$$P(\mathbf{y} \in I(\mathbf{x}))\geq 0.90.$$ 
-Adicionalmente, si la muestra de prueba no es muy chica, la cobertura real es cercana al 90\%.
-
-Esta cobertura es confiable y robusta, sin embargo, se requieren algunos elementos adicionales
-para que los intervalos sean más útiles. Quisiéramos también que la cobertura
-local alrededor de cualquier región del las $x$'s sea cercana al 90% (cobertura
-condicional). Esto es más
-dificíl de alcanzar, y en general, solo se satisface si se complen ciertos supuestos
-que en general es difícil verificar si se cumplen o no realmente, como la linealidad
-en problemas de dimensión alta.
-
-Un chequeo básico que podemos hacer es el siguiente:
-
-- Para cada nivel de predicción $\hat{y} = \hat{f}(x)$, los intervalos tienen cobertura de 90%.
-
-Como esto sólo involucra las predicciones, los valores observados, y los intervalos predictivos,
-esto puede checarse en la práctica con una tabla o gráfica. En caso de que
-no se cumpla esta condición, podemos usar una muestra independiente adicional 
-de **calibración**, y mejorar esta cobertura condicional.
 
 
 ## Ejemplo: bodyfat
@@ -151,18 +134,19 @@ y su distribución:
 ```{r}
 preds_gc_tbl <- predict(flujo_2, grasa_pr) |> 
   bind_cols(grasa_pr) |> 
-  mutate(residual = grasacorp - .pred)
+  mutate(residual = abs(grasacorp - .pred))
 ggplot(preds_gc_tbl, aes(x = residual)) +
   geom_histogram(binwidth = 2)
-intervalo_r <- quantile(preds_gc_tbl |> pull(residual), probs = c(0.05, 0.95))
-intervalo_r |> round(2)
+q_gc <- quantile(preds_gc_tbl |> pull(residual), probs = c(0.90))
+q_gc |> round(2)
 ```
+
 Y finalmente, podemos hacer distintas verificaciones para ver cómo se comportan los residuales, por 
 ejemplo:
 
 ```{r}
 preds_gc_tbl <- preds_gc_tbl |> 
-  mutate(inf = .pred + intervalo_r[1], sup = .pred + intervalo_r[2])
+  mutate(inf = .pred -  q_gc, sup = .pred + q_gc)
 ggplot(preds_gc_tbl, aes(x = abdomen, ymin = inf, ymax = sup, y = grasacorp)) +
   geom_point(colour = "red") +
   geom_linerange()
@@ -177,6 +161,7 @@ ggplot(preds_gc_tbl, aes(x = .pred, ymin = inf, ymax = sup, y = grasacorp)) +
   geom_point(colour = "red") +
   geom_linerange(alpha = 0.5) 
 ```
+
 Donde vemos que la cobertura parece ser similar para todos los rangos de valores
 de predicción. Podemos hacer también una tabla simple como la que sigue para verificar
 la cobertura:
@@ -191,6 +176,29 @@ preds_gc_tbl |>
   mutate(error_e = 2 * sqrt(cobertura * (1- cobertura) / n)) |> 
   gt() |> fmt_number(where(is_double), decimals = 2)
 ```
+
+## Defectos de los intervalos simples predictivos conformes
+
+La cobertura es confiable y robusta, sin embargo, se requieren algunos elementos adicionales
+para que los intervalos sean más útiles. Quisiéramos también que la cobertura
+local alrededor de cualquier región del las $x$'s sea cercana al 90% (cobertura
+condicional). Esto es más
+dificíl de alcanzar.
+
+Un chequeo básico que podemos hacer es el siguiente:
+
+- Para cada nivel de predicción $\hat{y} = \hat{f}(x)$, los intervalos tienen cobertura de 90%.
+
+Como esto sólo involucra las predicciones, los valores observados, y los intervalos predictivos,
+esto puede checarse en la práctica con una tabla o gráfica. En caso de que
+no se cumpla esta condición, podemos usar una muestra independiente adicional 
+de **calibración**, y mejorar esta cobertura condicional.
+
+Finalmente, a veces es importante que los intervalos tengan cobertura similar a lo largo
+de distintos valores de algunas entradas $x_i$ particulares. Por ejemplo, si $x_i$ indica
+nivel socioeconómico de un hogar, no quisiéramos introducir artefactos en la decisión
+debido a que la cobertura es desigual para distintos valores de esta variable de entrada.
+
 
 
 ## Ejemplo: rendimiento
@@ -235,15 +243,14 @@ Una vez que tenemos el flujo ajustado, podemos ver cómo se comportan los residu
 ```{r}
 preds_tbl <- predict(flujo_ajustado, datos_prueba) |> 
   bind_cols(datos_prueba) |> 
-  mutate(e = rendimiento_kpl - .pred)
-ggplot(preds_tbl, aes(x = e)) + geom_histogram()
+  mutate(r = abs(rendimiento_kpl - .pred))
+ggplot(preds_tbl, aes(x = r)) + geom_histogram()
 ```
-Podemos pensar que estos son Y podemos calcular cuantiles:
 
 ```{r}
-cuantiles_e <- quantile(preds_tbl |> pull(e), probs = c(0.05, 0.95)) |> 
+q <- quantile(preds_tbl |> pull(r), probs = c(0.90)) |> 
   round(2)
-cuantiles_e
+q
 ```
 
 Podemos ahora construir intervalos de 90% para nuestras predicciones de la siguiente
@@ -251,8 +258,8 @@ forma:
 
 ```{r}
 preds_tbl <- preds_tbl |> 
-  mutate(inf = .pred + cuantiles_e["5%"], 
-         sup = .pred + cuantiles_e["95%"])
+  mutate(inf = .pred - q, 
+         sup = .pred + q)
 ```
 Por definición, estos intervalos tienen cobertura promedio sobre un conjunto 
 de prueba de aproximadamente el 90%. 
@@ -343,19 +350,37 @@ eval_tbl |>
 
 En este caso, podemos construir nuevos intervalos utilizando los datos de evaluación.
 
-## Ejemplo: cambios en el modelo
 
-En algunos casos podemos seleccionar una variable respuesta diferente o la función
-de pérdida para obtener mejores propiedades de nuestros intervalos. En este
-ejemplo, escogemos como variable respuesta el precio por metro cuadrado sobre
-el área habitable.
+## Ejemplo: otras funciones de pérdida
+
+El mismo método puede aplicarse para otras funciones de pérdida más apropiadas 
+para cada problema. Supongamos que en el problema de predicción de precios, nos interesa
+particularmente la pérdida relativa dada por
+
+$$L(y, \hat{f}(x)) = \frac{y - \hat{f}(x)}{\hat{f}(x)}$$
+
+En este caso, a la pérdida $L(y, \hat{f}(x))$ a veces se le llama
+**medida de conformidad** de las predicciones. Podemos aplicar entonces el mismo procedimiento:
+
+1. Construimos con una muestra de entrenamiento $(x_i, y_i)$ nuestro predictor $\hat{f}(x)$
+2. Usamos una muestra de prueba separada para evaluar el error promedio, y adicionalmente,
+calculamos los valores $\mathbf{r}_i = L(\mathbf{y}_i , \hat{f}(\mathbf{x}_i))$
+3. Si queremos intervalos del 90%, calculamos ahora  $q$, que es el cuantil 
+90% de los valores $\mathbf{r}_i$
+3. Para un nuevo valor de las entradas $\mathbf{x}$, nuestro intervalo ( o más bien
+región predictiva) es todos los valores de $y$ que cumplen
+$$I(\mathbf{x}) = \{y : L(y, \hat{f}(\mathbf{x})) \leq q\} $$
+Y resulta ser que para una nueva observación,
+
+$$P(\mathbf{y} \in I(\mathbf{x}))\gtrsim 0.90$$
+Podemos ver esto con el ejemplo de precios de casas:
 
 ```{r}
 source("../R/casas_traducir_geo.R")
 set.seed(83)
 casas_split <- initial_split(casas, prop = 0.75)
 casas_entrena <- training(casas_split)
-receta_casas <- recipe(precio_m2_miles ~ 
+receta_casas <- recipe(precio_miles ~ 
            nombre_zona + 
            area_hab_m2 + area_garage_m2 + area_sotano_m2 + 
            area_2o_piso_m2 +
@@ -371,7 +396,6 @@ receta_casas <- recipe(precio_m2_miles ~
   step_mutate(tiene_2o_piso = ifelse(area_2o_piso_m2 == 0, 1, 0)) |> 
   step_mutate(area_sotano_m2 = ifelse(is.na(area_sotano_m2), 0, area_sotano_m2)) |> 
   step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |> 
-  step_ratio(starts_with("area"), denom = denom_vars(area_hab_m2)) |> 
   step_novel(nombre_zona, calidad_sotano, calidad_garage) |> 
   step_ns(calidad_gral, deg_free = 2) |> 
   step_ns(condicion_gral, deg_free = 2) |> 
@@ -380,8 +404,8 @@ receta_casas <- recipe(precio_m2_miles ~
   step_unknown(calidad_sotano, calidad_garage) |> 
   step_other(nombre_zona, threshold = 0.01, other = "otras") |> 
   step_dummy(nombre_zona, calidad_garage, calidad_sotano, aire_acondicionado) |> 
-  step_interact(terms = ~ starts_with("area_garage_m2_o"):starts_with("calidad_garage")) |> 
-  step_interact(terms = ~ starts_with("area_sotano_m2_o"): starts_with("calidad_sotano")) |> 
+  step_interact(terms = ~ starts_with("area_garage_m2"):starts_with("calidad_garage")) |> 
+  step_interact(terms = ~ starts_with("area_sotano_m2"): starts_with("calidad_sotano")) |> 
   step_nzv(all_predictors(), freq_cut = 500 / 1, unique_cut = 1)
 ```
 
@@ -390,7 +414,7 @@ Usaremos regresión ridge:
 ```{r}
 flujo_casas <- workflow() |> 
   add_recipe(receta_casas) |> 
-  add_model(linear_reg(mixture = 0, penalty = 0.005) |> 
+  add_model(linear_reg(mixture = 0, penalty = 0.01) |> 
             set_engine("glmnet", lambda.min.ratio = 1e-20))  
 ajuste <- fit(flujo_casas, casas_entrena)
 ```
@@ -403,32 +427,29 @@ metricas <- metric_set(mape, mae, rmse, rsq)
 casas_prueba_normal <- testing(casas_split) |> 
   filter(condicion_venta == "Normal")
 metricas(casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)), 
-     truth = precio_miles, estimate = .pred * area_hab_m2 ) |> 
+     truth = precio_miles, estimate = .pred  ) |> 
   gt() |> fmt_number(.estimate, decimals = 2)
 ```
 
 
-La distribución de los residuales de ve como sigue:
+La distribución de los residuales (que en este caso se llaman maś bien valores
+de conformidad) se ve como sigue:
 
 ```{r}
 preds_tbl <- casas_prueba_normal |> 
   bind_cols(predict(ajuste, casas_prueba_normal)) |> 
-  mutate(residual = precio_m2_miles - .pred)
-preds_tbl |> ggplot(aes(x = residual)) + geom_histogram(binwidth = 0.05)
-intervalo_r <- quantile(preds_tbl$residual, c(0.05, 0.95))
+  mutate(residual = abs(precio_miles - .pred)/.pred)
+preds_tbl |> ggplot(aes(x = residual)) + geom_histogram()
+q <- quantile(preds_tbl$residual, 0.90)
 ```
-
-
-Y nuestros intervalos se ven razonables, con menos incertidumbre para casas
-más baratas y más incertidumbre para las más caras:
 
 ```{r}
 set.seed(832)
 preds_tbl <- preds_tbl |> 
-  mutate(inf = .pred + intervalo_r[1], sup = .pred + intervalo_r[2]) |> 
-  mutate(pred_precio = .pred * area_hab_m2) |> 
-  mutate(inf_precio = area_hab_m2 * inf, sup_precio = area_hab_m2 * sup)
-ggplot(preds_tbl |> sample_n(200), aes(x = pred_precio, y = precio_miles, ymin = inf_precio, 
+  mutate(inf = .pred *(1 - q), sup = .pred  *(1 + q)) |> 
+  mutate(pred_precio = .pred ) |> 
+  mutate(inf_precio = inf, sup_precio =  sup)
+ggplot(preds_tbl, aes(x = pred_precio, y = precio_miles, ymin = inf_precio, 
                       ymax = sup_precio)) +
   geom_abline() + 
   geom_linerange() +
@@ -438,7 +459,7 @@ ggplot(preds_tbl |> sample_n(200), aes(x = pred_precio, y = precio_miles, ymin =
 Checamos finalmente que la calibración es razonable con una tabla:
 
 ```{r}
-n_grupos <- 8 # podemos usar más grupos si tenemos más datos
+n_grupos <- 10 # podemos usar más grupos si tenemos más datos
 preds_tbl |> 
   rename(y = precio_miles) |> 
   mutate(grupo_pred = cut_number(pred_precio, n = n_grupos)) |> 
@@ -450,3 +471,9 @@ preds_tbl |>
   geom_hline(yintercept = 0.9, colour = "red") +
   geom_point() + geom_linerange() + ylim(c(0.5, 1.1))
 ```
+
+
+
+
+
+
