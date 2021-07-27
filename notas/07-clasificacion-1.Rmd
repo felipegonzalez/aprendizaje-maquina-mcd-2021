@@ -1,0 +1,720 @@
+# Clasificación
+
+```{r, include = FALSE}
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
+knitr::opts_chunk$set(fig.width=4, fig.height=3) 
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  ggplot2::scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+## El problema de clasificación
+
+Una variable $g$ **categórica** o **cualitativa** toma valores que no
+son numéricos. Por ejemplo, si $g$ denota el estado del contrato de celular
+de un cliente dentro de un año, podríamos tener $g\in \{ activo, cancelado\}$.
+
+En un **problema de clasificación** buscamos predecir una variable respuesta
+categórica $g$ en función de otras variables de entrada
+$x=(x_1,x_2,\ldots, x_p)$.
+
+### Ejemplos {-}
+- Predecir si un cliente cae en impago de una tarjeta de crédito, de forma
+que podemos tener $g=corriente$ o $g=impago$. Variables de entrada podrían
+ser $x_1=$ porcentaje de saldo usado, $x_2=$ atrasos en los últimos 3 meses,
+$x_3=$ edad, etc
+
+- En reconocimiento de imágenes quiza tenemos que $g$ pertenece a un conjunto
+que típicamente contiene hasta cientos de valores (manzana, árbol, pluma, perro, coche, persona,
+cara, etc.). Las $x_j$ son valores de pixeles de la imagen para tres canales
+(rojo, verde y azul). Si las imágenes son de 100x100, tendríamos 30,000 variables
+de entrada.
+
+## ¿Qué estimar en problemas de clasificación? 
+
+Cuando clasificamos según entradas $x$ en una clase, podemos estar más
+o menos seguros de la clasificación. Por ejemplo: puede ser que la 
+la decisión es clasificar a un cliente dado como "impago en los
+próximos tres meses". La incertidumbe está en que quizá la probabilidad de impago es
+de 95%, pero existe una probabilidad de 5% de que el cliente se mantenga al corriente. Esto 
+es muy diferente a un cliente con probabilidades respectivas de 60% y 40%. En general,
+cualquier tipo de análisis costo-beneficio que utilice el modelo debe intentar tomar
+en cuenta que estos dos clientes son muy diferentes.
+
+Consideramos primero un problema de clasificación binaria, $y\in \{0,1\}$,
+$(x,y)$ un caso,
+y sea $p(x)$ una función que mide qué tan seguros estamos que la obervación es
+de clase $y=1$. Supondremos que $p(x)$ es una función que toma valores entre
+$0$ y $1$.
+
+Ahora necesitamos una función de pérdida $L(y, p)$ que evalúa el error
+cuando nuestra medida de confianza es $p$ y la clase observada es $y$. Podemos
+usar por ejemplo la pérdida cuadrática:
+
+$$L(y, p) = (y - p)^2,$$
+que también se llama pérdida de Brier en este contexto. Igual que en regresión,
+dada una población, podemos encontrar la función $p^*(x)$ que minimiza la pérdida
+esperada sobre toda la población. En este caso, 
+$$p^*(x) = E(y|x) = P(y=1|x)$$
+es decir, la verdadera probabilidad de que la clase sea 1 es la función $p^*(x)$
+que minimiza la pérdida cuadrática. Si usamos por ejemplo la pérdida absoluta,
+entonces la solucion es tomar como $p^* (x) = 1$ si $P(y= 1|x) > 0.5$, y $p^*(x)= 0$
+en otro caso (muestra por qué).
+
+Aunque utilizaremos otras pérdidas mejor adaptadas para el problema del clasificación,
+por el momento notemos que igual que planteamos el problema aprendizaje en regresión 
+como un problema de aproximar una curva $f^*(x)$ óptima con una función $\hat{f}(x)$
+construida a partir de datos, igualmente podemos plantear el problema de clasificación
+binaria como sigue:
+
+- Buscamos algoritmos ${mathcal L} \ to \hat{p}(x)$ tal que $\hat{p}(x)$ está cercana
+a la probabilida de clase $p^* (x) = p(y=1 |x)$.
+
+**Nota** Si queremos ser más explícitos, denotamos las 
+*probabilidades de clase* como $p_1(x) = p(y = 1|x)$ y $p_0(x) = p(y=0|x)$. Podemos
+estimar simplemente $p(x) = p_1(x)$ y luego definir $p_0(x) = 1 - p(x)$.
+
+Ahora consideramos un problema donde $g$ puede ser una de $K$ clases posibles. Tenemos
+$K$ probabilidades de clase $p(x) = (p_1(x), p_2(x), \ldots p_K(x))$ que deben sumar 1
+(de forma que una de ellas es redundante dadas las otras).
+
+La pérdida de Brier en este caso está dada por
+
+$$L(g, p(x)) = \sum_{k} (I(k=g) - p_k(x))^2$$
+Es decir, el sumando correspondiente a la clase observada es $(1-p_g(x))$, y los sumandos
+para el resto de las clases es $p_k(x)^2$. Esto quiere decir que el score de Brier
+es chico cuando $p_g(x)$, la probabilidad de la clase $g$, es cercana a uno y el 
+resto de las probabilidades son cercanas a 0 (verifica que esta definición es equivalente 
+para dos clases según la definición mostrada arriba para clasificación binaria). En este 
+caso, la solución teórica que minimiza esta pérdida promediada sobre toda la 
+población es
+
+$$p_k^*(x) = p(g = k| x)$$
+
+
+#### Ejemplo {-}
+(Impago de tarjetas de crédito) 
+Supongamos que $X=$ porcentaje del crédito máximo usado, y $g\in\{0, 1\}$, donde
+$1$ corresponde al corriente y $0$ representa impago. Podríamos tener, por ejemplo:
+\begin{align*} 
+p_1(10\%) &= P(g=1|x=10\%) = 0.95 \\
+p_0(10\%) &= P(g=0|x=10\%) =  0.05
+\end{align*}
+y 
+\begin{align*} 
+p_1(95\%) &= P(g=1|x=95\%) = 0.70 \\
+p_0(95\%) &= P(g=0|x=95\%) =  0.30
+\end{align*}
+
+
+#### Ejemplo {-}
+(Impago de tarjetas de crédito) 
+Supongamos que $x=$ porcentaje del crédito máximo usado, y $g\in\{0, 1\}$, donde
+$1$ corresponde al corriente y $0$ representa impago.
+ Las probabilidades condicionales de clase para la clase *al corriente* podrían
+ ser, por ejemplo:
+
+- $p_1(x) = P(g=1|x) =0.95$  si $x < 0.15$
+- $p_1(x) = P(g=1|x) = 0.95 - 0.7(x - 0.15)$ si $x>=0.15$
+  
+Estas son probabilidades, pues hay otras variables que influyen en que un cliente
+permanezca al corriente o no en sus pagos más allá de información contenida en el
+porcentaje de crédito usado. Nótese que estas probabilidades son diferentes
+a las no condicionadas, por ejempo, podríamos tener que a total $P(g=1)=0.83$
+
+```{r}
+p_1 <- function(x){
+  ifelse(x < 0.15, 0.95, 0.95 - 0.7 * (x - 0.15))
+}
+ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) + 
+    stat_function(fun = p_1)  +
+    ylab("p_1")
+```
+
+¿Por qué en este ejemplo ya no mostramos la función $p_0(x)$? 
+
+## Estimación de probabilidades de clase
+
+¿Cómo estimamos ahora las probabilidades de clase a partir de una
+muestra de entrenamiento? Veremos por ahora
+dos métodos: k-vecinos más cercanos y regresión logística. 
+
+
+### Ejemplo {-}
+
+
+Vamos a generar unos datos con el modelo simple del ejemplo anterior:
+
+```{r, warning = FALSE, message = FALSE}
+simular_impago <- function(n = 500){
+    # suponemos que los valores de x están concentrados en valores bajos,
+    # quizá la manera en que los créditos son otorgados
+    x <- pmin(rexp(n, 100 / 40), 1)
+    # las probabilidades de estar al corriente:
+    probs <- p_1(x)
+    # finalmente, simulamos cuáles clientes siguen al corriente y cuales no:
+    g <- rbinom(length(x), 1, probs)
+    dat_ent <- tibble(x = x, p_1 = probs, g = g)
+    dat_ent
+}
+set.seed(193)
+dat_ent  <- simular_impago() %>% select(x, g) 
+dat_ent %>% sample_n(20)
+```
+
+Como este problema es de dos clases, podemos graficar como sigue (agregamos
+variación artificial en $y$ para evitar traslape de los puntos):
+
+```{r, fig.width = 5, fig.asp = 0.7}
+graf_1 <- ggplot(dat_ent, aes(x = x)) +
+  geom_jitter(aes(colour = factor(g), y = g), 
+    width=0.02, height=0.1) + ylab("") + 
+    labs(colour = "Clase")
+graf_1 
+```
+
+
+
+## k-vecinos más cercanos 
+
+La idea general de $k$ vecinos más cercanos es simple: 
+nos fijamos en las tasas locales de impago alrededor de la $x$ para
+la que queremos predecir, y usamos esas tasas locales para estimar la probabilidad
+condicional.
+
+Supongamos entonces que tenemos un conjunto de entrenamiento
+$${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
+
+La idea es que si queremos predecir en $\mathbf{x}$, busquemos varios $k$ vecinos más cercanos
+a $\mathbf{x}$, y estimamos entonces $p_g(\mathbf{x})$ como la **proporción** de casos tipo $g$ que
+hay entre los $k$ vecinos de $\mathbf{x}$. 
+
+Vemos entonces que este método es un intento de hacer una aproximación directa
+de las probabilidades condicionales de clase.
+
+Podemos escribir esto como:
+
+```{block, type='comentario'}
+**k vecinos más cercanos para clasificación**
+Estimamos contando los elementos de cada clase entre los $k$ vecinos más cercanos:
+$$\hat{p}_g (\mathbf{x}) = \frac{1}{k}\sum_{x^{(i)} \in N_k(\mathbf{x})} I( g^{(i)} = g),$$
+    
+    
+para $g=1,2,\ldots, K$,  donde $N_k(\mathbf{x})$ es el conjunto de $k$ vecinos más cercanos en ${\mathcal L}$
+de $x_0$, y $I(g^{(i)}=g)=1$ cuando $g^{(i)}=g$, y cero en otro caso (indicadora).
+Usualmente normalizamos las variables de entrada $(x_1, \ldots, x_p)$ antes de calcular las distancias que usamos para encontrar los vecinos, especialmente si estas variables están en distintas escalas.
+```
+
+
+
+
+#### Ejemplo {-}
+
+Regresamos a nuestro problema de impago. Vamos a intentar estimar la
+probabilidad condicional de estar al corriente usando k vecinos 
+más cercanos (curva roja):
+
+```{r}
+vmc_modelo <- nearest_neighbor(neighbors = 100, weight_func = "gaussian") %>% 
+  set_engine("kknn") %>% 
+  set_mode("classification")
+ajuste_vmc <- vmc_modelo %>% fit(factor(g, levels = c(1, 0)) ~ x, dat_ent)
+# para graficar:
+graf_kvmc <- tibble(x = seq(0, 1, 0.01))
+graf_kvmc <- predict(ajuste_vmc, graf_kvmc, type = "prob") %>% 
+  bind_cols(graf_kvmc) %>% 
+  select(x, .pred_1)
+graf_kvmc %>% head
+```
+
+
+```{r,fig.width = 5, fig.asp = 0.7}
+# convertir g a factor para usar clasificación
+graf_verdadero <- tibble(x = seq(0, 1, 0.01), p_1 = p_1(x))
+graf_2 <- graf_1 + 
+  geom_line(data = graf_kvmc, aes(y = .pred_1), colour = 'red', size=1.2) +
+  geom_line(data = graf_verdadero, aes(y = p_1)) +
+  ylab('Probabilidad al corriente') + xlab('% crédito usado') 
+graf_2
+```
+
+Igual que en el caso de regresión, ahora tenemos qué pensar cómo validar nuestra
+estimación, pues no vamos a tener la curva negra real para comparar.
+
+
+## Ejemplo: diabetes
+
+Consideremos datos de diabetes en mujeres Pima:
+
+A population of women who were at least 21 years old, of Pima Indian heritage and living near Phoenix, Arizona, was tested for diabetes according to World Health Organization criteria. The data were collected by the US National Institute of Diabetes and Digestive and Kidney Diseases. We used the 532 complete records after dropping the (mainly missing) data on serum insulin.
+
+- npreg number of pregnancies.
+- glu plasma glucose concentration in an oral glucose tolerance test.
+- bp diastolic blood pressure (mm Hg).
+- skin triceps skin fold thickness (mm).
+- bmi body mass index (weight in kg/(height in m)\^2).
+- ped diabetes pedigree function.
+- age age in years.
+- type Yes or No, for diabetic according to WHO criteria.
+
+```{r, message=FALSE, warning=FALSE}
+diabetes_ent <- as_tibble(MASS::Pima.tr)
+diabetes_pr <- as_tibble(MASS::Pima.te)
+diabetes_ent
+```
+
+Intentaremos predecir diabetes dependiendo del BMI:
+
+```{r, fig.width=5, fig.asp=0.7}
+library(ggplot2)
+ggplot(diabetes_ent, aes(x = bmi, y= as.numeric(type=='Yes'), colour = type)) +
+  geom_jitter(height = 0.05)
+```
+
+Usamos $30$ vecinos más cercanos para estimar $p_g(x)$:
+
+
+```{r, fig.width=5, fig.asp=0.7}
+graf_data <- tibble(bmi = seq(20, 45, 1))
+# ajustar modelo
+ajuste_vmc_diabetes <- vmc_modelo %>% set_args(neighbors = 50) %>% 
+  fit(type ~ bmi, diabetes_ent)
+# graficar
+graf_data <- predict(ajuste_vmc_diabetes, graf_data, type = "prob") %>% 
+  bind_cols(graf_data) %>% 
+  select(bmi, .pred_Yes)
+ggplot(diabetes_ent, aes(x = bmi)) + 
+  geom_point(aes(y = as.numeric(type == "Yes"), colour = type)) + 
+  geom_line(data = graf_data, aes(y = .pred_Yes)) +
+  ylab('Probabilidad diabetes')
+```
+
+
+
+
+## Error para modelos de clasificación
+
+La pérdida de Brier es una medida útil para evaluar modelos, pero tiene algunos
+defectos cuando se usa en el ajuste de probabilidades de clase. Un defecto
+importante es que es penaliza relativamente poco a errores donde predecimos
+por ejemplo $\hat{p}_1(x) = 0.0001$, y resulta que observamos $g=1$. La penalización
+es similar que cuando $\hat{p}_1(x) = 0.01$, pero se puede argumentar que el primero
+de los errores es considerablemente más grave que el segundo.
+
+Consideremos entonces que tenemos una estimación $\hat{p}_g(x)$ de las probabilidad
+de clase. Supongamos que observamos ahora $(x, g)$ (la clase
+verdadera es $g$).
+
+- Si 
+$\hat{p}_{g}(x)$ es muy cercana a uno, deberíamos penalizar poco, pues dimos
+probabilidad alta a la clase $g$ que ocurrió.
+- Si $\hat{p}_{g}(x)$ es chica, deberíamos penalizar más, pues dimos probabilidad baja
+a observar la clase $g$.
+- Si $\hat{p}_{g}(x)$ es muy cercana a cero, y observamos $g$, deberíamos hacer
+una penalización muy alta (convergiendo a $\infty$, pues no es aceptable que sucedan
+eventos con probabilidad estimada extremadamente baja).
+
+
+Quisiéramos encontrar una función $h$ apropiada, de forma que la pérdida
+al observar $(x, g)$ sea 
+$$s(\hat{p}_{g}(x)),$$
+y que cumpla con los puntos arriba señalados. Entonces tenemos que
+
+- $s$ debe ser una función continua y decreciente en $[0,1]$
+- Podemos poner $s(1)=0$ (no hay pérdida si ocurre algo con que dijimos tiene probabilidad 1)
+- $s(p)$ debe ser muy grande is $p$ es muy chica.
+
+Una opción analíticamente conveniente es la **pérdida logarítmica**:
+$$s(p) = - \log(p)$$
+
+```{r, fig.width=5, fig.asp=0.7}
+perdidas_tbl <- tibble(p = seq(0.01, 1, 0.001)) |> 
+  mutate(logarítmica = - log(p), brier  = 2 * (1 - p)^2) |> 
+  pivot_longer(cols = logarítmica:brier, names_to = "tipo", values_to = "perdida")
+ggplot(perdidas_tbl, aes(x = p, y = perdida, colour = tipo)) +
+  geom_line(size = 1.1)
+```
+
+Para el problema multiclase, la pérdida logarítmica que construimos está dada, para
+$(x,g)$ observado y probabilidades estimadas $\hat{p}_g(x)$ por
+
+$$
+-  \log(\hat{p}_g(x))
+$$
+
+donde $\hat{p}(x)$ es la probabilidad estimada de nuestro modelo. Nótese que igual
+que la pérdida de Brier, si queremos minimizar la pérdida logarítmica sobre toda
+la población, la solución está dada por las probabilidades de clase
+
+$$p_k^*(x) = p(g = k|x).$$  
+De modo que la función que queremos estimar es la misma en ambos casos. La pérdida
+de Brier sin embargo, es menos sensible a errores
+
+
+
+
+**Observaciones**:
+
+- La pérdida logarítmica también se llama **devianza binomial** o **devianza multinomial** en
+otros lugares, usualmente multipicada por 2 (lo cual no cambia sus propiedades).
+
+- Una razón importante para usar la pérdida logarítmica como el objetivo a minimizar 
+es que resulta en una estimación de máxima verosimilitud para los parámetros (condicional a las x's), como veremos más adelante.
+
+- No es fácil interpretar la devianza, pero es útil para ajustar y comparar modelos. Veremos otras medidas más fáciles de interpretar más adelante.
+
+
+Compara la siguiente definición con la que vimos para modelos de regresión:
+
+```{block2, type = 'comentario'}
+Sea $${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
+una muestra de entrenamiento, a partir de las cuales construimos mediante
+un algoritmo  funciones estimadas
+$\hat{p}_{g} (x)$ para $g=0,1,\ldots, K-1$. La **devianza promedio de entrenamiento** 
+está dada por
+\begin{equation}
+\overline{err} = - \frac{1}{N}\sum_{i=1}^N log(\hat{p}_{g^{(i)}} (x^{(i)}))
+  (\#eq:devianza)
+\end {equation}
+Sea $${\mathcal T}=\{ (\mathbf{x}^{(1)},\mathbf{g}^{(1)}),(\mathbf{x}^{(2)},\mathbf{g}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{g}^{(m)}) \}$$ una muestra de prueba. La **devianza promedio de prueba** es
+\begin{equation}
+\hat{Err} = - \frac{2}{m}\sum_{i=1}^m log(\hat{p}_{\mathbf{g}^{(i)}} (\mathbf{x}^{(i)}))
+\end {equation}
+que es una estimación de la devianza de predicción
+$$-E_{(x,g)}\left [ \log(\hat{p}_g(x)) \right ]$$
+```
+
+
+#### Ejemplo {-}
+
+Regresamos a nuestros ejemplo simulado de impago de tarjetas de crédito. Primero
+calculamos la pérdida logarítmica de entrenamiento
+
+```{r}
+s <- function(x) -log(x)
+dat_dev <- ajuste_vmc %>% 
+  predict(dat_ent, type = "prob") %>% 
+  bind_cols(dat_ent) %>% 
+  select(x, g, .pred_0, .pred_1)
+dat_dev <- dat_dev %>% mutate(hat_p_g = ifelse(g==1, .pred_1, .pred_0))
+```
+
+Nótese que dependiendo de qué clase observamos (columna $g$), extraemos la
+probabilidad correspondiente a la columna hat_p_g:
+
+```{r}
+set.seed(125)
+dat_dev %>% sample_n(20)
+```
+
+Ahora aplicamos la función $s$ que describimos arriba, y promediamos sobre
+el conjunto de entrenamiento:
+
+```{r}
+dat_dev <- dat_dev %>% mutate(dev = s(hat_p_g))
+dat_dev %>% sample_n(20)
+dat_dev %>% ungroup %>% summarise(dev_entrena = mean(dev))
+```
+
+```{r}
+dat_dev %>% mn_log_loss(factor(g, levels = c(1, 0)), .pred_1) %>% 
+  mutate(.estimate = .estimate )
+```
+
+
+Recordemos que la devianza de entrenamiento no es la cantidad que evalúa el
+desempeño del modelo. Hagamos el cálculo entonces para una muestra de prueba:
+
+```{r}
+set.seed(1213)
+dat_prueba <- simular_impago(n = 5000) %>% select(x, g)
+## calcular para muestra de prueba
+dat_dev_prueba <- ajuste_vmc %>% 
+  predict(dat_prueba, type = "prob") %>% 
+  bind_cols(dat_prueba) %>% 
+  select(x, g, .pred_0, .pred_1)
+dat_dev_prueba <- dat_dev_prueba %>% 
+  mutate(hat_p_g = ifelse(g==1, .pred_1, .pred_0))
+dat_dev_prueba <- dat_dev_prueba %>% mutate(dev = s(hat_p_g))
+dat_dev_prueba %>% ungroup %>% summarise(dev_prueba = mean(dev))
+```
+
+
+
+
+## Regresión logística
+
+En $k$ vecinos más cercanos, intentamos estimar directamente con promedios
+las probabilidades de clase, sin considerar ninguna estructura. Ahora
+consideramos modelos más estructurados, definidos por parámetros, e intentaremos
+ajustarlos minimizando la pérdida logarítmica. 
+
+Igual que en regresión lineal, algunos de los modelos
+más simples que podemos imaginar son modelos lineales. Solo es necesario
+hacer una adaptación. 
+
+Supongamos que nuestra variable respuesta es $y$, que toma valores 0 o 1.
+
+Ahora queremos definir $p(x) = p_1(x)$ (probabilidad de que ocurra la clase 1)
+en términos de un promedio ponderado de
+las variables de entrada, como en regresión lineal:
+
+$$\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_px_p.$$
+
+Sin embargo, observamos que esta expresión puede
+dar valores negativos o mayores a uno, de forma que no necesariamente
+puede interpetarse como una probabilidad $p(x)$. Una de las formas más sencillas
+de resolver este problema es transformar esta expresión para que necesariamente
+esté en $[0,1]$ por medio de una función fija $h$:
+
+$$p_{\beta}(x) = h(\beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_px_p),$$
+donde $h$ debe ser una función que mapea valores reales a valores en $[0,1]$. 
+
+En este punto hay muchas funciones que podríamos usar. Para simplificar la interpretación y uso de este modelo, podemos escoger entre funciones que satisfagan, por ejemplo:
+
+1. $h$ toma valores en $[0,1]$ es creciente y diferenciable
+2. $h(0) = 0.5$ (0 equivale a probabilidad 0.5, negativos dan probabilidades menores a 0.5 y positivos dan probabilidades mayores a 0.5)
+3. $h(-x)=1-h(x)$ (simetría). Por ejemplo, si $h(-2)=0.16$ entonces $h(2)= 1-0.16=0.84$. 
+
+Hay todavía muchas opciones. Una de las más simples es usar la función
+logística
+
+```{block2, type='comentario'}
+La función logística está dada por
+$$h(x)=\frac{e^x}{1+e^x}$$
+``` 
+
+```{r, fig.width = 4, fig.asp =0.5}
+h <- function(x){exp(x)/(1+exp(x)) }
+ggplot(tibble(x = seq(-6, 6, 0.01)), aes(x = x)) + stat_function(fun = h)
+```
+
+
+Esta función comprime adecuadamente (para nuestros propósitos) 
+el rango de todos los reales dentro del intervalo $[0,1]$. Si aplicamos
+al predictor lineal que consideramos, obtenemos:
+
+
+```{block2, type='comentario'}
+El **modelo de regresión logística**  está dado por
+$$p_1(x)=p_1(x;\beta)= h(\beta_0+\beta_1x_1 + \beta_2 x_2 + \cdots + \beta_p x_p)$$
+    
+y $$p_0(x)=p_0(x;\beta)=1-p_1(x;\beta),$$
+donde $\beta=(\beta_0,\beta_1, \beta_2, \cdots, \beta_p)$.
+```
+
+### Ejemplo {-}
+
+Consideremos nuestro ejemplo de impago. Podemos examinar qué tipo
+de probilidades obtendríamos con regresión logística y distintos parametros beta:
+
+```{r, fig.width = 8, fig.asp = 0.5}
+crear_p <- function(beta_0, beta_1){
+    function(x){
+        h(beta_0 + beta_1 * x)
+    }
+}
+df_grid <- tibble(x = seq(0, 1, 0.01))
+betas <- tibble(beta_0 = c(-5, -0.5, 2.5),
+                beta_1 = c(10,   -2, -4))
+betas <- betas %>% 
+    mutate(p = map2(beta_0, beta_1, crear_p)) %>% 
+    mutate(grid = map(p, ~ df_grid %>% mutate(p_1 = .(x)))) %>% 
+    select(-p) %>% 
+    mutate(fun_nom = paste(beta_0, "+", beta_1, "x")) %>% 
+    unnest(cols = c(grid))
+graf_1 + geom_line(data = betas, aes(x = x, y = p_1)) + facet_wrap(~fun_nom) 
+```
+
+Experimenta con otros valores de $\beta_0$ y $\beta_1$.
+
+```{block2 ,type="comentario"}
+Encontramos los coeficientes de la regresión logística minimizando la pérdida
+logarítmica de entrenamiento.
+```
+
+Esto se puede hacer de diversas maneras. Tradicionalmente, se utiliza el método
+de Newton-Raphson, pero resulta más fácil escalar métodos derivados de descenso
+máximo. Es decir, calculamos el gradiente de la pérdida y tomamos un paso en la dirección 
+contraria al gradiente, que es la dirección local de descenso máximo.
+
+
+## Ejercicio: datos de diabetes
+
+Ya están divididos los datos en entrenamiento y prueba
+```{r, message=FALSE, warning=FALSE}
+diabetes_ent <- as_tibble(MASS::Pima.tr)
+diabetes_pr <- as_tibble(MASS::Pima.te)
+diabetes_ent
+diabetes_ent$id <- 1:nrow(diabetes_ent)
+diabetes_pr$id <- 1:nrow(diabetes_pr)
+```
+
+Aunque no es necesario, podemos normalizar:
+
+```{r, message=FALSE, warning=FALSE }
+receta_diabetes <- recipe(type ~ ., diabetes_ent) %>%
+  update_role(id, new_role = "id_variable") %>% 
+  step_normalize(all_numeric()) 
+diabetes_ent_s <- receta_diabetes %>% prep() %>% juice() 
+diabetes_pr_s <- receta_diabetes %>% prep() %>% bake(diabetes_pr)
+```
+
+```{r}
+modelo_lineal <- logistic_reg(mode = "classification") %>% 
+  set_engine("glm")
+flujo_diabetes <- workflow() %>% 
+  add_model(modelo_lineal) %>% 
+  add_recipe(receta_diabetes)
+flujo_ajustado <- fit(flujo_diabetes, diabetes_ent)
+flujo_ajustado
+```
+
+
+Ahora calculamos devianza de prueba y error de clasificación:
+
+```{r}
+preds_prueba <- 
+  predict(flujo_ajustado, diabetes_pr, type= "prob") %>% 
+  bind_cols(predict(flujo_ajustado, diabetes_pr)) %>% 
+  bind_cols(diabetes_pr %>% select(type))
+preds_prueba
+```
+
+
+```{r}
+levels(preds_prueba$type)
+# ponemos event_level si "positivo" no es el primer factor
+metricas <- metric_set(accuracy, mn_log_loss)
+metricas(preds_prueba, truth = type, .pred_Yes, estimate = .pred_class, 
+         event_level = "second")
+```
+
+
+
+Vamos a repetir usando keras.
+```{r}
+library(keras)
+x_ent <- diabetes_ent_s %>% select(-type, -id) %>% as.matrix
+y_ent <- diabetes_ent_s$type == "Yes"
+x_prueba <- diabetes_pr_s %>% select(-type, -id) %>% as.matrix
+y_prueba <- diabetes_pr_s$type == 'Yes'
+# definición de estructura del modelo (regresión logística)
+# es posible hacerlo con workflows como vimos arriba, 
+# pero aquí usamos directamente la interfaz de keras en R
+n_entrena <- nrow(x_ent)
+modelo_diabetes <- keras_model_sequential() %>%
+        layer_dense(units = 1,        #una sola respuesta,
+            activation = "sigmoid",    # combinar variables linealmente y aplicar función logística
+            kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
+            bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
+# compilar seleccionando cantidad a minimizar, optimizador y métricas
+modelo_diabetes %>% compile(
+        loss = "binary_crossentropy",  # devianza es entropía cruzada
+        optimizer = optimizer_sgd(lr = 0.75), # descenso en gradiente
+        metrics = list("binary_crossentropy"))
+# Ahora iteramos
+# Primero probamos con un número bajo de iteraciones
+historia <- modelo_diabetes %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradiente
+  epochs = 20, # número de iteraciones
+  verbose = 0
+)
+plot(historia)
+```
+Y ahora podemos correr más iteraciones *adicionales*:
+```{r}
+historia <- modelo_diabetes %>% fit(
+  as.matrix(x_ent), # x entradas
+  y_ent,            # y salida o target
+  batch_size = nrow(x_ent), # para descenso en gradiente
+  epochs = 1000, # número de iteraciones
+  verbose = 0
+)
+```
+Los errores de entrenamiento y prueba son:
+```{r}
+options(scipen = 0, digits = 4)
+evaluate(modelo_diabetes, x_ent, y_ent)
+```
+```{r}
+evaluate(modelo_diabetes, x_prueba, y_prueba)
+```
+Veamos que coeficientes obtuvimos:
+```{r}
+get_weights(modelo_diabetes)
+```
+
+que coincide con el número que obtuvimos usando regresión logística de *glm*.
+
+## Calibración de probabilidades
+
+Adicionalmente a buscar devianzas bajas, cuando usamos las 
+probabilidades obtenidas para más análisis o algún proceso,
+es necesario checar el ajuste. Podemos hacer esto realizando pruebas de la *calibración*
+de las probabilidades que arroja el modelo.
+Esto quiere decir que si el modelo nos dice que la probabilidad de que la clase 1 es 0.8,
+entonces si tenemos un número grande de estos casos (con probabilidad 0.8), alrededor
+de 80\% de éstos tienen que ser positivos. 
+#### Ejemplo {-}
+Podemos checar la calibración de nuestro modelo para el ejemplo de diabetes.
+```{r}
+proba_mod <- predict(modelo_diabetes, x_prueba)
+dat_calibracion <- tibble(obs = diabetes_pr %>% pull(type), 
+                          probabilidad = proba_mod[,1]) %>% 
+    mutate(y = ifelse(obs == "Yes", 1, 0))
+dat_calibracion
+```
+```{r}
+ggplot(dat_calibracion, aes(x = probabilidad, y = y)) + 
+    geom_jitter(width = 0, height = 0.02, alpha = 0.2) +
+    geom_smooth(method = "loess", span = 0.7, colour = "red", se = FALSE) + 
+    geom_abline() +
+    coord_equal()
+```
+Y en esta gráfica verificamos que los promedios locales de proporciones de 0-1's son 
+consistentes con las probabilidades que estimamos. Otra manera de hacer esta gráfica
+es cortando las probabilidades en cubetas y calculamos intervalos de credibilidad
+para cada estimación: con esto checamos si el observado es consistente con
+las probabilidades de clase.
+```{r}
+# usamos intervalos suavizados (bayesiano beta-binomial) en lugar de los basados
+# en los errores estándar sqrt(p*(1-p) / n)
+calibracion_gpos <- dat_calibracion %>% 
+    mutate(proba_grupo = cut(probabilidad, 
+      quantile(probabilidad, seq(0, 1, 0.1)), include.lowest = TRUE)) %>% 
+    group_by(proba_grupo) %>% 
+    summarise(prob_media = mean(probabilidad), 
+              n = n(),
+              obs = sum(y), .groups = "drop") %>% 
+    mutate(obs_prop = (obs + 1) / (n + 2), 
+           inferior = qbeta(0.05, obs + 1,  n - obs + 2),
+           superior = qbeta(0.95, obs + 1,  n - obs + 2))
+calibracion_gpos
+```
+```{r}
+ggplot(calibracion_gpos, 
+  aes(x = prob_media, y = obs_prop, ymin = inferior, ymax = superior)) +
+    geom_abline() +
+    geom_linerange() +
+    geom_point(colour = "red") + coord_equal() +
+  xlab("Probabilidad de clase") +
+  ylab("Proporción observada") +
+  labs(subtitle = "Intervalos de 90% para prop observada")
+```
+Y con esto verificamos que calibración del modelo es razonable.
+**Observación**: 
+1. Si las probabilidades no están calibradas, y las queremos
+utilizar como tales (con simplemente como *scores*), entonces puede ser
+necesario hacer un paso adicional de calibración, con una muestra
+separada de calibración (ver por ejemplo @kuhn, sección 11.1).
+2. En este ejemplo construimos intervalos para las proporciones observadas
+usando intervalos bayesianos. Es posible usar intervalos normales o t (usando el
+error estándar), pero estos intervalos tienen cobertura mala para proporciones
+muy chicas o muy grandes (https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval). Nuestro ejemplo es similar a los intervalos de Agresti-Coull.
+
+## Regresión logística multinomial
+
