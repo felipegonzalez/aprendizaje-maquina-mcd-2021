@@ -1,4 +1,4 @@
-# Métodos locales
+# Métodos locales no estructurados
 
 ```{r, include = FALSE}
 ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
@@ -121,7 +121,7 @@ con dificultades.
 
 ## La maldición de la dimensionalidad 
 
-Si queremos hacer una predicción en $x_0$, el método de k-vecinos más cercanos funciona mejor cuando 
+El método de k-vecinos más cercanos funciona mejor cuando 
 
 - No es necesario hacer $k$ demasiado grande, de forma que terminemos tomando valores
 lejanos que inducen sesgo.
@@ -129,13 +129,14 @@ lejanos que inducen sesgo.
 sean inestables.
 
 ```{block2, type = "comentario"}
-En dimensión alta, para la mayoría de las $x_0$ donde queremos hacer predicciones
+En dimensión alta, para la mayoría de las $\mathbf{x}$ donde queremos hacer predicciones
 típicamente no existen vecinos cercanos, aún para conjuntos de entrenamiento muy grandes.
 ```
 
 Esto implica que incluso con $k$ chica (que produce sobreajuste) sufrimos simultáneamente
-de sesgo (por extrapolación a regiones no relevantes).
-
+de sesgo (por extrapolación a regiones no relevantes). Esto implica que en estos
+casos (que son muy comunes) métodos locales no funcionan bien independientemente de cómo
+afinemos el algoritmo.
 
 
 #### Ejemplo {-}
@@ -261,8 +262,8 @@ regresion_pred <- function(dat){
 regresion_pred(dat)
 ```
 
-Donde podemos ver que típicamente la predicción de regresión
-es mucho mejor que la de 1 vecino más cercano. Esto es porque el modelo **explota la estructura aproximadamente lineal del problema** (¿cuál estructura lineal? haz algunas gráficas). Nota: corre este ejemplo varias veces con semilla diferente.
+La razón de este mejor desempeño de regresión es que en este caso, el modelo lineal 
+**explota la estructura aproximadamente lineal del problema** (¿cuál estructura lineal? haz algunas gráficas). Nota: corre este ejemplo varias veces con semilla diferente.
 
 *Solución*: vamos a hacer varias simulaciones, para ver qué modelo
 se desempeña mejor.
