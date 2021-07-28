@@ -123,7 +123,9 @@ permanezca al corriente o no en sus pagos más allá de información contenida e
 porcentaje de crédito usado. Nótese que estas probabilidades son diferentes
 a las no condicionadas, por ejempo, podríamos tener que a total $P(g=1)=0.83$
 
-```{r}
+```{r, message = FALSE}
+library(tidyverse)
+library(tidymodels)
 p_1 <- function(x){
   ifelse(x < 0.15, 0.95, 0.95 - 0.7 * (x - 0.15))
 }
@@ -718,3 +720,207 @@ muy chicas o muy grandes (https://en.wikipedia.org/wiki/Binomial_proportion_conf
 
 ## Regresión logística multinomial
 
+Para estimar $K$ probabilidades de clase, consideramos $k$ predictores lineales
+individuales
+
+$$f_k(x) = \beta_{0, k} + \beta_{1,k} x_1 + \cdots + \beta_{p,k} x_p$$
+
+y la probabilidad de clase la calculamos haciendo *softmax* sobre estas:
+
+$$p_k(x) = \frac{e^{f_k(x)}}{\sum_i e^{f_i(x)}}$$
+
+que necesariamente suman uno. Nótese si embargo que este modelo está sobreparametrizado,
+pues solamente es necesario escribir $K-1$ de estas probabilidades, y la última tiene
+que ser el complemento para que sumen uno. Podemos ver esto, por ejemplo,
+si sumamos $h(x) = \gamma_0 + \gamma_1x_1 + \cdots \gamma_p x_p$ a todas las funciones:
+
+$$p_k(x) = \frac{e^{f_k(x) + h(x)}}{\sum_i e^{f_i(x) + h(x)}} = \frac{e^{f_k(x)}}{\sum_i e^{f_i(x)}}$$
+
+En regresión logística, por ejemplo, si tenemos $f_1(x)$ y $f_0(x)$ podemos tomar
+$f_0(x) = 0$, de forma que
+$$p_1(x) = \frac{e^{f_1(x)}}{1+ e^{f_1(x)}}$$
+que es justamente el modelo de regresión logística como lo escribimos arriba. Siempre
+es posible entonces crear una clase de *referencia*, con coeficientes igual a 0, aunque esto
+**no es necesario si usamos regularización**, que generalmente es el caso.
+
+## Ejemplo: clasificación de ropa
+
+Para el siguiente problema tenemos imágenes en blanco y negro de artículos de ropa
+
+```{r, message = FALSE}
+library(imager)
+ropa_datos <- dataset_fashion_mnist()
+ropa_entrena <- ropa_datos$train 
+ropa_prueba <- ropa_datos$test
+# estas son las categorias:
+articulos <- c("playera/top", "pantalón", "suéter", "vestido", "abrigo", "sandalia", 
+                 "camisa", "tenis", "bolsa", "bota")
+etiquetas_tbl <- tibble(
+  codigo = 0:9, 
+  articulo = c("playera", "pantalón", "suéter", "vestido", "abrigo", "sandalia", 
+                 "camisa", "tenis", "bolsa", "bota"))
+```
+
+```{r}
+x <- ropa_entrena$x
+y <- ropa_entrena$y
+```
+
+Por ejemplo:
+
+```{r}
+par(mfrow = c(4, 4), mar = c(1,1,1,1))
+for(i in 2:17) plot(as.cimg(t(x[2 + i, ,])), axes = FALSE, main = articulos[y[2 + i] + 1])
+```
+
+Utilizaremos regresión logistica multinomial con keras y regularización L2:
+
+
+```{r}
+# https://gist.github.com/dokato/823eb947989d5203205788d50f769766
+num_classes <- 10
+input_shape <- c(28, 28, 1)
+
+# normalizar
+x_entrena <- ropa_entrena$x / 255
+x_prueba <- ropa_prueba$x / 255
+
+# Convert class vectors to binary class matrices
+y_entrena <- to_categorical(ropa_entrena$y, num_classes)
+y_prueba <- to_categorical(ropa_prueba$y, num_classes)
+
+#' Model definition
+#' (architecture taken from 
+#' https://keras.rstudio.com/articles/examples/mnist_cnn.html )
+model <- keras_model_sequential()
+model |> 
+  layer_flatten() |> 
+  layer_dense(units = 10,
+              activity_regularizer = regularizer_l2(l = 0.0001), 
+              activation = 'softmax') 
+# compile model
+model |>  compile(
+  loss = loss_categorical_crossentropy,
+  optimizer = optimizer_adam(lr = 0.001),
+  metrics = c('accuracy')
+)
+
+# train and evaluate
+model %>% fit(
+  x_entrena, y_entrena,
+  batch_size = 128,
+  epochs = 40,
+  verbose = 1,
+  validation_data = list(x_prueba, y_prueba)
+)
+
+scores <- model %>% evaluate(
+  x_prueba, y_prueba, verbose = 0
+)
+cat('Test pérdida:', scores[[1]], '\n')
+cat('Test clasificación correcta:', scores[[2]], '\n')
+
+```
+
+Ahora podemos hacer predicciones:
+
+```{r}
+preds_mat <- predict(model, x_prueba)
+dim(preds_mat)
+probs <- round(preds_mat[1,], 3)
+tibble(articulo = articulos, prob = probs) |> 
+  arrange(probs)
+```
+```{r}
+plot(as.cimg(t(ropa_prueba$x[1,,])), axes = FALSE, main = articulos[ropa_prueba$y[1] + 1])
+```
+
+Y podemos checar calibración categoría por categoría, por ejemplo:
+
+```{r, message = FALSE}
+library(gt)
+colnames(preds_mat) <- articulos
+preds_tbl <- as_tibble(preds_mat) |> 
+  mutate(id = 1:nrow(preds_mat), .before = 1) |> 
+  mutate(codigo = ropa_prueba$y) |> 
+  left_join(etiquetas_tbl)
+preds_tbl |> head() |> gt() |> fmt_number(where(is_double), decimals = 3)
+```
+
+```{r}
+preds_tbl |>  select(suéter, articulo) |> 
+  mutate(obs_sueter = articulo == "suéter") |> 
+  mutate(grupo_prob = cut_number(suéter, 60)) |> 
+  group_by(grupo_prob) |> 
+  summarise(n = n(),
+      pred_sueter = mean(suéter), 
+      prop_sueter = mean(obs_sueter)) |>
+  mutate(ee = sqrt(prop_sueter * (1 - prop_sueter) / n)) |> 
+ggplot(aes(x = pred_sueter, y = prop_sueter, ymin = prop_sueter - 2*ee,
+           ymax = prop_sueter + 2* ee)) +
+  geom_abline() +
+  geom_linerange() + 
+  geom_point(colour = "red") 
+```
+
+Vemos que la calibración es razonable, al menos para la categoría de suéteres. Podemos
+checar otras categorías de esta manera. Calibrar estas probabilidades puede ser más difícil,
+pero podemos construir regiones conformes con garantías de cobertura como mostramos abajo:
+
+## Regiones conformes para clasificación
+
+Podemos construir conjuntos de predicción con la técnica de predicción conforme 
+con muestra de prueba, siguiendo ideas de [@gentle21], ver [aquí](http://people.eecs.berkeley.edu/~angelopoulos/blog/posts/gentle-intro/) también.
+En este caso, no es necesario tener probabilidades calibradas necesariamente, y los conjuntos
+de predicción que obtendremos tendrán la cobertura correcta a total.
+
+
+```{r}
+preds_larga_tbl <- preds_tbl |> 
+  pivot_longer(`playera/top`:bota, names_to = "articulo_prob", values_to = "prob") |> 
+  group_by(id) |> 
+  arrange(id, desc(prob)) |>
+  mutate(clase_verdadera = articulo == articulo_prob) |> 
+  mutate(acumulado = cumsum(clase_verdadera))
+e_valores <- preds_larga_tbl |> 
+  filter(clase_verdadera) |>
+  group_by(id) |> 
+  summarise(e = sum(prob))
+q <- quantile(e_valores$e, prob = 0.05)
+e_valores |> ggplot(aes(x = e)) + geom_histogram() +
+  geom_vline(xintercept = q, colour = "red")
+```
+
+```{r}
+conjuntos_conf <- preds_larga_tbl |> group_by(id) |> 
+  filter(prob > q) |> 
+  select(id, articulo = articulo_prob, prob)
+conjuntos_conf
+```
+
+Y así se ve el tamaño de los conjuntos conformes. La mayoría consiste de una sola
+clase (con probabilidad de 95%), pero muchos tienen 2 o 3 categorías posibles, de modo
+que el desempeño de nuestro modelo no es excelente.
+
+```{r}
+conjuntos_conf |> count(id) |> 
+  group_by(n) |> count()
+```
+
+
+Por ejemplo:
+
+```{r}
+filter(conjuntos_conf, id == 21)
+```
+```{r}
+plot(as.cimg(t(ropa_prueba$x[21,,])), axes = FALSE, main = articulos[ropa_prueba$y[21] + 1])
+```
+
+
+```{r}
+id_1 <- 27
+ejemplo_conf <- filter(conjuntos_conf |> ungroup(), id == id_1)
+ejemplo_conf
+plot(as.cimg(t(ropa_prueba$x[id_1,,])), axes = FALSE, main = articulos[ropa_prueba$y[id_1] + 1])
+```
