@@ -118,7 +118,7 @@ convexa, y la solución es única, excepto en casos degenerados que podremos
 evitar más adelante usando regularización.
 
 **Observación**:
-Como discutimos al final de las sección anterior, minimizar directamente el error
+Como discutimos al final de la sección anterior, minimizar directamente el error
  de entrenamiento para encontrar los coeficientes puede resultar en en un modelo
  sobreajustado/con varianza alta/ruidoso. Hay
  tres grandes estrategias para mitigar este problema: restringir o estructurar la familia
@@ -442,6 +442,38 @@ metricas(casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)),
   gt() |> fmt_number(.estimate, decimals = 2)
 ```
 
+## No linealidad y atípicos
+
+En un primer ejemplo consideremos la variable de area de lote:
+
+```{r, fig.width = 8, fig.height=3, warning=FALSE ,message = FALSE}
+library(patchwork)
+g_1 <- ggplot(casas_entrena, aes(x = area_lote_m2, y = precio_miles)) +
+  geom_point() + #geom_smooth(method = "loess", span = 0.5, se = FALSE,
+                #             method.args = list(degree = 1)) +
+  geom_smooth(method = "lm", se = FALSE)
+g_2 <- ggplot(casas_entrena |> filter(area_lote_m2 < 5000), aes(x = area_lote_m2, y = precio_miles)) +
+  geom_point(data = casas_entrena, aes(colour = area_lote_m2 > 5000)) + 
+  #geom_smooth(method = "loess", span = 0.5, se = FALSE,
+  #                           method.args = list(degree = 1)) +
+  geom_smooth(method = "lm", se = FALSE)
+g_1 + g_2
+```
+Y notamos que hay algunos valores grandes que pueden perturbar el ajuste lineal. Esto
+puede producir varianza alta en las predicciones, pues el ajuste depende mucho de unos
+cuantos valores de entrenamiento. Una solución puede ser transformar la entrada por
+ejempo usando el logaritmo, que comprime la cola derecha de la distribución
+de la variable que tiene mucho sesgo:
+
+```{r, fig.width = 4, fig.height=3}
+ggplot(casas_entrena, aes(x = area_lote_m2, y = precio_miles)) +
+  geom_point() +
+  geom_smooth(method = "loess", span = 0.5, se = FALSE) +
+  scale_x_log10()
+```
+Nótese que probablemente tendremos que agregar más flexibilidad en nuestro
+predictor para capturar apropiadamente la información en esta variable.
+
 ## No linealidad y splines
 
 En algunos casos, la relación de una variable de entrada con la predicción es no lineal.
@@ -581,6 +613,7 @@ receta_casas <- recipe(precio_miles ~
   step_other(nombre_zona, threshold = 0.02, other = "otras") |> 
   step_mutate(area_sotano_m2 = ifelse(is.na(area_sotano_m2), 0, area_sotano_m2)) |> 
   step_mutate(area_garage_m2 = ifelse(is.na(area_garage_m2), 0, area_garage_m2)) |>
+ # step_log(area_lote_m2) |> 
   step_ns(año_construccion, deg_free = 2) |> 
   step_ns(calidad_gral, deg_free = 2) |> 
   step_ns(condicion_gral, deg_free = 2) |> 
@@ -612,3 +645,12 @@ metricas(casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)),
      truth = precio_miles, estimate = .pred) |> 
   gt() |> fmt_number(.estimate, decimals = 2)
 ```
+
+Finalmente, examinamos la respuesta contra la predicción:
+
+```{r, fig.width= 4, fig.height=3}
+casas_prueba_normal |> bind_cols(predict(ajuste, casas_prueba_normal)) |> 
+  ggplot(aes(x = .pred, y = precio_miles)) + geom_abline() + 
+    geom_point(colour = "red") + coord_obs_pred()
+```
+
