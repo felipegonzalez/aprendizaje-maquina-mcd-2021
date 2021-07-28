@@ -68,8 +68,8 @@ como un problema de aproximar una curva $f^*(x)$ óptima con una función $\hat{
 construida a partir de datos, igualmente podemos plantear el problema de clasificación
 binaria como sigue:
 
-- Buscamos algoritmos ${mathcal L} \ to \hat{p}(x)$ tal que $\hat{p}(x)$ está cercana
-a la probabilida de clase $p^* (x) = p(y=1 |x)$.
+- Buscamos algoritmos ${\mathcal L} \ to \hat{p}(x)$ tal que $\hat{p}(x)$ está cercana
+a la probabilidad de clase $p^* (x) = p(y=1 |x)$.
 
 **Nota** Si queremos ser más explícitos, denotamos las 
 *probabilidades de clase* como $p_1(x) = p(y = 1|x)$ y $p_0(x) = p(y=0|x)$. Podemos
@@ -373,18 +373,19 @@ Compara la siguiente definición con la que vimos para modelos de regresión:
 Sea $${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
 una muestra de entrenamiento, a partir de las cuales construimos mediante
 un algoritmo  funciones estimadas
-$\hat{p}_{g} (x)$ para $g=0,1,\ldots, K-1$. La **devianza promedio de entrenamiento** 
+$\hat{p}_{g} (x)$ para $g=0,1,\ldots, K-1$. La **pérdida logarítmica de entrenamiento** 
 está dada por
 \begin{equation}
 \overline{err} = - \frac{1}{N}\sum_{i=1}^N log(\hat{p}_{g^{(i)}} (x^{(i)}))
   (\#eq:devianza)
 \end {equation}
-Sea $${\mathcal T}=\{ (\mathbf{x}^{(1)},\mathbf{g}^{(1)}),(\mathbf{x}^{(2)},\mathbf{g}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{g}^{(m)}) \}$$ una muestra de prueba. La **devianza promedio de prueba** es
+Sea $${\mathcal T}=\{ (\mathbf{x}^{(1)},\mathbf{g}^{(1)}),(\mathbf{x}^{(2)},\mathbf{g}^{(2)}), \ldots, (\mathbf{x}^{(m)}, \mathbf{g}^{(m)}) \}$$ una muestra de prueba. La **pérdida logarítmica de prueba** es
 \begin{equation}
-\hat{Err} = - \frac{2}{m}\sum_{i=1}^m log(\hat{p}_{\mathbf{g}^{(i)}} (\mathbf{x}^{(i)}))
+\hat{Err} = - \frac{1}{m}\sum_{i=1}^m log(\hat{p}_{\mathbf{g}^{(i)}} (\mathbf{x}^{(i)}))
 \end {equation}
 que es una estimación de la devianza de predicción
-$$-E_{(x,g)}\left [ \log(\hat{p}_g(x)) \right ]$$
+$$-E\left [ \log(\hat{p}_g(x)) \right ],$$
+donde el promedia se toma sobre todos los valores $(\mathbf{x}, \mathbf{g})$ de la población.
 ```
 
 
