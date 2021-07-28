@@ -69,7 +69,7 @@ en foros?
 ## Ejemplo: reglas y aprendizaje
 
 *Lectura de un medidor mediante imágenes*. Supongamos que en
-una infraestructura donde hay medidores análogos (de electricidad, gas, etc.) que no se comunican. ¿Podríamos pensar en utilizar
+una infraestructura donde hay medidores análogos (de agua, electricidad, gas, etc.) que no se comunican. ¿Podríamos pensar en utilizar
 fotos tomadas automáticamente para medir el consumo?
 
 Por ejemplo, consideramos el siguiente problema (tomado de [aquí](https://community.openhab.org/t/water-meter-digitizer-version-2-all-in-device-including-mqtt/107188), ver [código y datos](https://github.com/jomjol/water-meter-system-complete)):
@@ -87,14 +87,14 @@ plot(medidor, axes = FALSE)
 ```
 
 Nótese que las imágenes y videos son matrices o arreglos de valores de pixeles, por ejemplo
-estas son las dimensiones para el video y para un cuadro:
+estas son las dimensiones para una imagen:
 
 ```{r}
 dim(medidor)
 ```
 
-En este caso, la imagen es de 142x142 pixeles y tiene tres canales, o 
-tres matrices de 142 x 142 donde la entrada de cada matriz es la intensidad
+En este caso, la imagen es de 193 x 193 pixeles y tiene tres canales, o 
+tres matrices de 193 x 193 donde la entrada de cada matriz es la intensidad
 del canal correspondiente. Buscámos hacer cálculos con estas matrices para extraer la información
 que queremos. En este caso, construiremos estos cálculos a mano.
 
@@ -117,9 +117,10 @@ plot(aguja, axes = FALSE)
 ```
 
 Logramos extraer la aguja, aunque hay algo de ruido adicional.
-Podemos extraer las líneas que pasan por más pixeles
-encendidos (transformada de Hough). Con estas líneas tenemos
-calculada la orientación de la aguja:
+Una estrategia es extraer la componente conexa más grande (que debería
+corresponder a la aguja), y luego calcular su orientación. Una manera fácil
+es encontrar una recta que vaya del centro de la imagen hasta el punto más alejado
+del centro (aunque quizá puedes pensar maneras más robustas de hacer esto):
 
 ```{r, message=FALSE}
 calcular_punta <- function(pixset){
@@ -187,8 +188,8 @@ El desempeño no es muy malo pero tiene algunas fallas grandes. Quizá refinando
 Por el contrario, en el **enfoque de aprendizaje**, comenzamos con un conjunto de datos **etiquetado**
 (por una persona, por un método costoso, etc.), y utilizamos alguna
 estructura general para aprender a producir la respuesta a partir
-de las imágenes. Por ejemplo, en este caso podríamos usar regresión
-lineal (regularizada) sobre los valores de los pixeles de la imagen:
+de las imágenes. Por ejemplo, en este caso podríamos una red
+convolucional sobre los valores de los pixeles de la imagen:
 
 ```{r}
 library(keras)
@@ -329,8 +330,10 @@ g_2 <- ggplot(casas_entrena, aes(x = area_hab_m2,
 g_1 + g_2
 ```
 
-La variable de condición de venta no podemos utilizarla. Podemos ver en
-lugar de eso solamente las de condición normal. También consideramos,
+La variable de condición de venta no podemos utilizarla para predecir,
+pues sólo la conocemos una vez que la venta se hace. Podemos ver en
+lugar de eso solamente las de condición normal. Consideramos además
+del área habitable, 
 por ejemplo, la calidad general de terminados:
 
 ```{r areacalidad, fig.width=6, fig.height=3}
@@ -360,8 +363,8 @@ Y quizá podríamos proponer una fórmula simple de la forma:
 $$Precio = a_{calidad} + b_{calidad}\textrm{Area} + c \textrm{AreaGarage} + d\textrm{TieneGarage}$$
 
 donde los valores de $a_{calidad}, b_{calidad}, c, d$ podríamos estimarlos de
-los datos, e indica la forma de las rectas de la gráfica de arriba
-dependiendo de la calificación de la calidad de los terminados.
+los datos. La pendiente de Area
+dependende de la calificación de la calidad de los terminados.
 
 Nuestro proceso comenzaría entonces construir los datos para usar en el
 modelo:
