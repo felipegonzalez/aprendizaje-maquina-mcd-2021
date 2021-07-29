@@ -488,12 +488,12 @@ salen del modelo (sus coeficientes son cero). Por ejemplo, para
 un valor de $lambda$ intermedio, obtenemos un modelo simple de la forma:
 
 ```{r}
-coefs %>% filter(step == 22) %>% 
+coefs %>% filter(step == 21) %>% 
   select(term, estimate, lambda)
 ```
 
 
-Y nótese que este modelo solo incluye 4 variables.La traza confirma que la regularización lasso, 
+Y nótese que este modelo solo incluye 3 variables.La traza confirma que la regularización lasso, 
 además de encoger 
 coeficientes, saca variables del modelo conforme el valor de regularización
 aumenta.

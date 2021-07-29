@@ -116,15 +116,27 @@ $$f^*(x) = E(y | x)$$
 de forma que $f^*$ es la media condicional de la $y$ dado que sabemos que las entradas
 son $x$. Si usáramos la pérdida absoluta $L(y, f(x)) = |y - f(x)|$ entonces
 $$f^*(x) = \textrm{mediana}(y|x).$$
-Distintas funciones de pérdida dan distintas soluciones teóricas.
+Distintas funciones de pérdida dan distintas soluciones teóricas. Por ejemplo,
+si existen valores atípicos en $y$ producidos por errores de registro o medición,
+usar la pérdida absoluta puede dar mejores resultados que la cuadrática, que tiende
+a dar mayor peso a errores grandes.
 
 **Observaciones**: 
 
 - Podemos ver nuestra tarea entonces como una de ajuste de curvas: queremos aproximar tan bien como sea posible la función $f^*(x)$.
 - No es simple decidir qué función de pérdida debería utilizarse
-para un problema dado de predicción.  Generalmente es una combinación de 
+para un problema dado de predicción.  
+Generalmente es una combinación de 
 costos/beneficios del problema que tratamos, conveniencia computacional, y 
 cómo se comportan los errores de nuestros predictores bajo distintas pérdidas.
+- Muchas veces es mejor considerar el problema de selección de la pérdida desde
+dos ángulos: el primero es computacional y de propiedades de la predicción, y el
+segundo tiene que ver con costos y beneficios asociados al problema que queremos
+resolver. Para el primero, alguna de las pérdidas estándar (como  las que 
+vimos arriba, cuadrática y absoluta, ologarítmica) es usualmente suficiente. En el segundo
+enfoque, el análisis es generalmente involucra más aspectos particulares del problema
+y generalmente tiene que hacerse de manera ad-hoc.
+
 
 ### Ejemplo {-}
 
@@ -204,7 +216,7 @@ podríamos usar un método estándar para estimar su precisión, por ejemplo con
 ### Ejemplo: regla {-}
 
 Ahora probemos con otro predictor, por ejemplo, supongamos que estamos usando
-la regla de "cada año de escolaridad aumenta ingresos potenciales en 100 unidades", 
+la regla de "cada año de escolaridad aumenta ingresos potenciales en 20 unidades", 
 un predictor construido con reglas manuales que es
 
 ```{r}
@@ -275,9 +287,10 @@ el **error de entrenamiento**, como
 
 $$\overline{err} = \frac{1}{N}\sum_{i=1}^N L(y^{(i)} , \hat{f}(x^{(i)})).$$
 que es una medida de qué tan bien se ajusta a $\hat{f}$ a los datos con los
-que se entrenó $\hat{f}. Usualmente
-esta cantidad no es apropiada para medir el desempeño de un predictor, como discutiremos
-más adelante.
+que se entrenó $\hat{f}$. Usualmente
+esta cantidad no es apropiada para medir el desempeño de un predictor, pues
+el algoritmo $\hat{f}$ incluye las "respuestas" $y_i$ en su construcción, de
+forma que tiende a ser una estimación optimista del error de predicción.
 
 
 
@@ -366,8 +379,10 @@ de la forma
 
 $$f(x) = \beta_0 + \beta_1x$$
 Usamos la muestra de entrenamiento para encontrar la $\beta_0$ y $\beta_1$ que 
-minimizar el error sobre los datos disponibles de entrenamiento.
-
+minimizar el error sobre los datos disponibles de entrenamiento, lo cual es un problema
+de optimización relativamente fácil. Usamos entonces
+$$\hat{f}(x) =\hat{\beta}_0 + \hat{\beta}_1 x$$
+para hacer nuestras predicciones.
 
 ```{r}
 modelo_lineal <- linear_reg() |> 
@@ -394,7 +409,7 @@ fmt_resumen(bind_rows(resumen_vmc_tbl, resumen_lineal_tbl))
 ```
 
 Y el desempeño de este método es mejor que vecinos más cercanos (ver columna
-de prueba). Nótese que a diferencia de
+de prueba). 
 
 ```{r, fig.width=5, fig.height=3}
 preds_1 <- predict(flujo_ajustado_lineal, tibble(x = 0:17)) |> 
@@ -410,7 +425,7 @@ g_1
 
 En este caso:
 
-- No hay brecha grande entre el error de entrenamiento y el error predictivo
+- No hay brecha tan grande entre el error de entrenamiento y el error predictivo
 - Observamos patrones claros de desajuste: el predictor lineal no captura
 el patrón curvo que presentan los datos: en la parte media de las $x$ tiende
 a producir predicciones demasiado altas y lo contario ocurre en los extremos
@@ -437,8 +452,10 @@ este error seleccionando nuestra muestra de entrenamiento y método de predicci�
 
 En nuestros dos ejemplos anteriores, el error reducible era considerablemente grande
 (como podemos verificar comparando con el predictor óptimo, que sólo sufre de error
-irredicuble). Pero la razón por la ese error reducible es grande es diferente en cada
-caso. Para explicar la diferencia, podemos considerar $f_{lim}$, el predictor que obtendríamos
+irreducible). Pero la razón por la que ese error reducible es grande es diferente en cada
+caso. 
+
+Para explicar la diferencia, podemos considerar $f_{lim},$ el predictor que obtendríamos
 con nuestro método si ajustáramos nuestro método *con la población completa*, de 
 manera que $\hat{f}\to f_{\lim}$ cuando el tamaño de la muestra de entrenamiento
 se hace muy grande. 
@@ -464,7 +481,7 @@ En nuestros dos ejemplos, intuímos que vecinos más cercanos sufre más de vari
 o sobreajuste y regresión lineal de sesgo. Podemos verificar viendo qué pasa con
 los dos métodos cuando los entrenamos con la población completa.
 
-## Ejemplo:
+## Ejemplo: fuentes de error
 
 Vamos a ver qué sucede con nuestros dos métodos si utilizamos una muestra grande:
 
@@ -528,13 +545,9 @@ bien por sobreajuste o variabilidad.
 - Nuestro método lineal no tiene mucha variabilidad (el estimado con una muestra
 grande es casi igual al de la muestra de entrenamiento), sino más bien
 por sesgo
-- En ambos casos, una buena parte del error es irreducible. Necesitaríamos otras
-variables de entrada para reducir este error.
-
 
 - El error por sesgo se reduce usando métodos más flexibles o menos
-restringidos que puedan capturar patrones claros en los datos. Este término
-no tiene qué ver con la muestra de entrenamiento.
+restringidos que puedan capturar patrones claros en los datos. 
 - Para reducir la variabilidad podemos usar métodos más simples o restringidos
 que no capturen tanto ruido. Aumentar la muestra de entrenamiento puede ayudar
 también.
@@ -588,9 +601,10 @@ predict(flujo_ajustado_lineal, bind_rows(entrena_tbl, prueba_tbl)) |>
   fmt_number(.estimate, decimals = 1)
 ```
 
-Y vemos cómo inmediatamente redujimos el error de predicción: en este caso, aunque el
-sobreajuste aumentó un poco, la reducción en el sesgo y en el error irreducible.
-Examina el caso de vecinos más cercanos.
+Y vemos cómo inmediatamente redujimos el error de predicción: en este caso, aunque 
+la variabilidad aumentó un poco (tenemos más parámetros que estimar vs 
+el modelo con una sola variable), la reducción en el sesgo y en el error irreducible es
+tan grande que el desempeño es muy superior. Examina el caso de vecinos más cercanos.
 
 ## Acerca de la estimación del error de predicción
 
@@ -619,12 +633,12 @@ preds |>
 ```{block2, type='comentario'}
 La **tarea fundamental del análisis supervisado** es:
 
-- Usando datos de entrenamiento ${\mathcal L}$, construimos una funcion $\hat{f}$ para predecir
-- Si observamos nuevos valores $x_0$, nuestra predicción es $\hat{y} = \hat{f}(x_0)$.
+- Usando datos de entrenamiento ${\mathcal L}$, construimos una funcion $\hat{f}$ para predecir. Estas
+funciones se ajustan usualmente intentando estimar directamente el predictor óptimo $f^*(x)$ (si lo conocemos teóricamente), o indirectamente intentando minimizar la pérdida sobre el conjunto de entrenamiento.
+- Si observamos nuevos valores $\mathbf{x}$, nuestra predicción es $\hat{y} = \hat{f}(\mathbf{x})$.
 - Buscamos que cuando observemos **nuevos** casos para predecir, nuestro error de predicción
-sea bajo en promedio ($Err$ sea bajo)
-- Usualmente estimamos $Err$ mediante una muestra de prueba o validación ${\mathcal T}$, así
-que buscamos minimizar la estimación $\hat{Err}$
+sea bajo en promedio ($Err$ sea bajo).
+- Usualmente estimamos $Err$ mediante una muestra de prueba o validación ${\mathcal T}$.
 - Nos interesan métodos de construir $\hat{f}$ que produzcan errores de predicción bajos.
 ```
 
@@ -644,11 +658,14 @@ predicción**.
 
 Para reducir el error de predicción, podemos:
   
-1. Incluir variables relevantes que reduzcan el error irreducible.
-2. Reducir variabilidad usando métodos más estables o menos complejos.
-3. Reducir sesgo usando métodos más flexibles o con la estructura apropiada.
+1. Incluir variables relevantes que reduzcan el error irreducible
+2. Reducir variabilidad usando métodos más estables o menos complejos
+3. Reducir sesgo usando métodos más flexibles 
+4. Usar métodos con la estructura adecuada para el problema
 
-Generalmente 2 y 3 están en contraposición.
+Generalmente 2 y 3 están en contraposición, a lo que muchas veces se le llama
+**equilibrio de varianza y sesgo**. Los puntos 1 y 4 generalmente mejoran los resultados
+reduciendo tanto sesgo como variabilidad.
 ```
 
 
@@ -661,15 +678,11 @@ modelos predictivos. Para que estas ideas funcionen en problemas reales, hay
 más aspectos a considerar que no discutiremos con detalle (y muchas veces son
 considerablemente más difíciles de la teoría y los algoritmos):
 
-- La aplicación de aprendizaje de máquina requiere, en primer lugar, de que los
-**datos correctos** sean identificados y capturados. Esto en muchos casos requiere esfuerzos
-concentrados en esta dirección y típicamente no sucede sino hasta cuando comenzamos
-el trabajo de construir modelos predictivos (o al menos el trabajo de construir
-conjuntos de reglas). 
+
 
 - Para entender exactamente cuál es **el problema** que queremos resolver
 se requiere trabajo analítico considerable, y también trabajo en entender
-aspectos del negocio/área donde nos interesa usar aprendizaje máquina. Muchas
+aspectos del área o negocio donde nos interesa usar aprendizaje máquina. Muchas
 veces es fácil resolver un problema muy preciso, que tenemos a la mano,
 pero que más adelante nos damos cuenta de que no es útil.
 
