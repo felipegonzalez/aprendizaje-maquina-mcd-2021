@@ -4,3 +4,9 @@ language:
     chapter_name: "Clase "
 new_session: yes
 delete_merged_file: true
+rmd_files: ["index.Rmd", 
+            "01-introduccion.Rmd", 
+            "02-principios-supervisado.Rmd", 
+            "03-metodos-locales.Rmd", 
+            "04-lineales-ingenieria.Rmd",
+            "99-referencias.Rmd"]
