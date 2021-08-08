@@ -64,11 +64,11 @@ ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl, colour = año)) +
   geom_point()
 ```
 
-Consideremos un modelo de $k=15$ vecinos más cercanos. La función de predicción
-ajustada es entonces:
+Probaremos con varios valores para $k$, el número de vecinos más cercanos. 
+La función de predicción ajustada es entonces:
 
 ```{r}
-# nótese que no normalizamos entradas - esto también es importante
+# nótese que normalizamos entradas - esto también es importante
 # hacer cuando hacemos vecinos más cercanos, pues en otro caso
 # las variables con escalas más grandes dominan el cálculo
 vmc_1 <- nearest_neighbor(neighbors = tune(), weight_func = "gaussian") |>  
@@ -96,6 +96,7 @@ vecinos_ajustes_tbl <- vecinos_eval_tbl %>%
 ggplot(vecinos_ajustes_tbl, aes(x = neighbors, y = .estimate)) +
   geom_line() + geom_point()
 ```
+
 Donde obtenemos más o menos lo que esperaríamos: modelos con muy pocos vecinos
 o demasiados vecinos se desempeñan relativamente mal. Podemos visualizar
 nuestras predicciones y los datos de entrenamiento de la siguiente forma:
@@ -112,6 +113,7 @@ ggplot(datos_entrena, aes(x = peso_kg, group = año, colour = año)) +
   geom_point(aes(y = rendimiento_kpl), alpha = 0.6) + 
   geom_line(data = dat_graf, aes(y = pred_1),  size = 1.2)
 ```
+
 El método parece funcionar razonablemente bien para este problema simple. Sin 
 embargo, si el espacio de entradas no es de dimensión baja, entonces podemos encontrarnos
 con dificultades.

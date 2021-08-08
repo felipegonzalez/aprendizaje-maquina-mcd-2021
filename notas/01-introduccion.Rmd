@@ -278,7 +278,7 @@ en procesamiento de imágenes es cada vez más común usar redes neuronales
 grandes para resolver este tipo de problemas.
 
 
-## Ejemplo:  mediciones costosas
+## Ejemplo:  mediciones costosas {#medicioncostosa}
 
 
 En algunos casos, el estándar de la medición que nos interesa es uno que
@@ -336,7 +336,7 @@ lugar de eso solamente las de condición normal. Consideramos además
 del área habitable, 
 por ejemplo, la calidad general de terminados:
 
-```{r areacalidad, fig.width=6, fig.height=3}
+```{r areacalidad, fig.cap = "Precio vs área y calidad", fig.width=6, fig.height=3}
 g_1 <- ggplot(casas_entrena |>  
          filter(condicion_venta == "Normal") |>  
          mutate(calidad_grupo = cut(calidad_gral, breaks = c(0, 5, 7, 8, 10))), 
