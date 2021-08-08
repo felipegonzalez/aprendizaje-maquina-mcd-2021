@@ -15,7 +15,7 @@ description: "Notas y material para el curso de aprendizaje de máquina (ITAM, 2
 
 # Temario y referencias {-}
 
-**Todas las notas y material del curso estarán en este** [repositorio](https://github.com/felipegonzalez/aprendizaje-maquina-mcd-2019).
+**Todas las notas y material del curso estarán en este** [repositorio](https://github.com/felipegonzalez/aprendizaje-maquina-mcd-2021).
 
 - Introducción al aprendizaje máquina
 - Regresión lineal múltiple y descenso en gradiente
@@ -37,7 +37,7 @@ description: "Notas y material para el curso de aprendizaje de máquina (ITAM, 2
 ### Material {-}
 
 Cada semestre las notas cambian, en algunas partes considerablemente. Las
-de este semestre están en [este repositorio](https://github.com/felipegonzalez/aprendizaje-maquina-mcd-2020),
+de este semestre están en [este repositorio](https://github.com/felipegonzalez/aprendizaje-maquina-mcd-2021),
 incluyendo ejemplos, ejercicios y tareas.
 
 ### Referencias principales {-}
