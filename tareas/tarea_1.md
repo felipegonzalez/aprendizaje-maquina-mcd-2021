@@ -10,8 +10,8 @@ https://rstudio.cloud/spaces/153586/join?access_code=14RcBcZTgqg6GJl7E7Ur8tSkkFG
 script y ve los resultados del html resultante. Puedes también ver las notas para guíarte.
 
 4. Repite con distintas muestras de entrenamiento 
-(por ejemplo, córrelo unas 5 veces al menos) cambiando la
-semilla en la línea 32. Describe cómo se comportan las predicciones con
+(córrelo unas 5 veces al menos) cambiando la
+semilla en la línea 32 (la que dice set.seed(12)). Describe cómo se comportan las predicciones con
 distintas muestras. ¿Cuáles cambian más bajo distintas muestras? ¿Qué errores sistemáticos
 en las predicciones puedes ver?
 
