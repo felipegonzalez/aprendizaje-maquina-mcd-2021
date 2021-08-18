@@ -3,6 +3,6 @@
 .RData
 .Ruserdata
 tmp/
-
+.*
 # Local Netlify folder
 .netlify

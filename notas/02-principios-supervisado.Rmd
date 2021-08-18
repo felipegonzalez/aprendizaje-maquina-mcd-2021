@@ -617,7 +617,7 @@ library(infer)
 preds <- predict(flujo_ajustado_lineal, bind_rows(prueba_tbl)) |> 
   bind_cols(prueba_tbl) 
 preds |> 
-  generate(reps = 1000, type = "bootstrap") |> 
+  generate(reps = 1000, type = "bootstrap", variables = id) |> 
   group_by(replicate, tipo) |> 
   rmse(truth = y, estimate = .pred) |> 
   select(replicate, tipo, stat = .estimate) |>
