@@ -1,0 +1,89 @@
+---
+title: "Vecinos más cercanos"
+output: html_notebook
+---
+
+```{r, message = FALSE}
+library(tidyverse)
+auto <- read_csv("./datos/auto.csv")
+datos <- auto[, c('name', 'weight','year', 'mpg', 'displacement')]
+datos <- datos %>% mutate(
+  peso_kg = weight * 0.45359237,
+  rendimiento_kpl = mpg * (1.609344 / 3.78541178), 
+  año = year)
+```
+## Separación de datos
+
+Escogemos una división de manera que tengamos alrededor
+de 200 casos de prueba. En total tenemos 392 observaciones.
+
+```{r, message = FALSE}
+library(tidymodels)
+set.seed(121)
+datos_split <- initial_split(datos, prop = 0.5)
+datos_entrena <- training(datos_split)
+datos_prueba <- testing(datos_split)
+nrow(datos_entrena)
+nrow(datos_prueba)
+```
+
+Vamos a usar año y peso de los coches para predecir su rendimiento:
+
+```{r}
+ggplot(datos_entrena, aes(x = peso_kg, y = rendimiento_kpl, colour = año)) +
+  geom_point()
+```
+
+## Definir flujo y parámetros a afinar
+
+```{r}
+# nótese que normalizamos entradas - esto también es importante
+# hacer cuando hacemos vecinos más cercanos, pues en otro caso
+# las variables con escalas más grandes dominan el cálculo
+vmc_1 <- nearest_neighbor(neighbors = tune(), weight_func = tune()) |>  
+  set_engine("kknn") |>  
+  set_mode("regression")
+receta_vmc <- recipe(rendimiento_kpl ~ peso_kg + año, datos_entrena) |> 
+  step_normalize(all_predictors()) 
+flujo_vecinos <- workflow() |>  
+  add_recipe(receta_vmc) |> 
+  add_model(vmc_1)
+vecinos_params <- parameters(neighbors(range = c(1, 100)), weight_func(values = c("gaussian", "rectangular")))
+vecinos_grid <- grid_regular(vecinos_params, levels = 100)
+```
+
+## Ajustar y evaluar cada combinación de hiperparámetros
+
+```{r, fig.width=4, fig.height=3}
+mis_metricas <- metric_set(rmse)
+r_split <- manual_rset(list(datos_split), "validación")
+vecinos_eval_tbl <- tune_grid(flujo_vecinos,
+                            resamples = r_split,
+                            grid = vecinos_grid,
+                            metrics = mis_metricas) 
+vecinos_ajustes_tbl <- vecinos_eval_tbl %>%
+  unnest(cols = c(.metrics)) %>% 
+  select(id, neighbors, weight_func, .metric, .estimate)
+ggplot(vecinos_ajustes_tbl, aes(x = neighbors, y = .estimate, colour = weight_func)) +
+  geom_line() + geom_point()
+```
+
+## Obtener el mejor ajuste
+
+```{r, fig.width=5, fig.height=3}
+mejor_rmse <- select_best(vecinos_eval_tbl, metric = "rmse")
+vecinos_ajustes_tbl |> semi_join(mejor_rmse)
+```
+
+
+```{r, fig.width=5, fig.height=3}
+ajuste_1 <- finalize_workflow(flujo_vecinos, mejor_rmse) |> 
+  fit(datos_entrena)
+dat_graf <- tibble(peso_kg = seq(900, 2200, by = 10)) %>% 
+  crossing(tibble(año = c(70, 75, 80)))
+dat_graf <- dat_graf %>% 
+  mutate(pred_1 = predict(ajuste_1, dat_graf) %>% pull(.pred))
+ggplot(datos_entrena, aes(x = peso_kg, group = año, colour = año)) +
+  geom_point(aes(y = rendimiento_kpl), alpha = 0.6) + 
+  geom_line(data = dat_graf, aes(y = pred_1),  size = 1.2)
+```

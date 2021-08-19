@@ -1,0 +1,77 @@
+---
+title: "Métodos locales en dimensión alta"
+output: html_notebook
+---
+
+## Ejercicio 1
+
+Considera el ejemplo que vimos en clase, donde simulamos 8 variables
+uniformes independientes en $[0,1]$ como variables de entrada
+y queremos predecir una variable $y$ determinística (determinada sin error
+por las entradas):
+
+```{r}
+library(tidyverse)
+# dimensión
+dim_x <- 8
+# tamaño de muestra de entrenamiento
+n <- 1000
+fun_exp <- function(x) exp(-8 * sum(x ^ 2))
+x <- map(1:n, ~ runif(dim_x, -1, 1))
+dat <- tibble(x = x) %>% 
+       mutate(y = map_dbl(x, fun_exp))
+```
+
+Calculamos el vecino más cercano al origen:
+
+```{r}
+dat <- dat %>% mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+mas_cercano <- dat[1, ]
+mas_cercano
+mas_cercano$x[[1]]
+```
+
+
+Comparamos la $y$ del vecino más cercano con la predicción correcta
+
+```{r}
+mas_cercano$y
+fun_exp(0)
+```
+
+
+**Pregunta 1**: ¿qué tan buena es la predicción de 1 vecino más cercano? Según
+la descomposición de sesgo y varianza que vimos, cuál es el mayor problema?
+
+
+**Pregunta 2**: ¿Qué tan grande tienes qué hacer $n$ para que la predicción no sea tan mala?
+Expilca en tus palabras por qué es necesario hacer $n$ tan grande.
+
+## Ejercicio 2
+
+En lugar de que cada variable de entrada sea uniforme,
+prueba usando la distribución normal. Puedes hacer por ejemplo
+
+```{r}
+library(tidyverse)
+# dimensión
+dim_x <- 30
+# tamaño de muestra de entrenamiento
+n <- 10000
+fun_exp <- function(x) exp(-8 * sum(x ^ 2))
+x <- map(1:n, ~ rnorm(dim_x, 0, 1))
+dat <- tibble(x = x) %>% 
+       mutate(y = map_dbl(x, fun_exp))
+dat <- dat %>% mutate(dist_origen = map_dbl(x, ~ sqrt(sum(.x^2)))) %>% 
+  arrange(dist_origen)
+```
+
+**Pregunta 3**: ¿Los resultados son mejores que en el caso uniforme?
+
+**Pregunta 4**: En promedio, ¿qué tan lejos caen los puntos de entrenamiento
+del origen? ¿Cómo describirías cualitativamente dónde se concentran los puntos
+de entrenamiento alrededor del origen? ¿Te sorprende este resultado?
+
+
+
