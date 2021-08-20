@@ -9,5 +9,5 @@ rmd_files: ["index.Rmd",
             "02-principios-supervisado.Rmd", 
             "03-metodos-locales.Rmd", 
             "04-lineales-ingenieria.Rmd",
-            "81-apendice-descenso.Rmd"
+            "81-apendice-descenso.Rmd",
             "99-referencias.Rmd"]
