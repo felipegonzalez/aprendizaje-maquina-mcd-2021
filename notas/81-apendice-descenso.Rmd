@@ -470,7 +470,7 @@ Entonces escalamos antes de ajustar:
 ```{r}
 x1_s = (x1 - mean(x1))/sd(x1)
 x2_s = (x2 - mean(x2))/sd(x2)
-dat <- data_frame(x1_s, x2_s,  y)
+dat <- tibble(x1_s = x1_s, x2_s = x2_s,  y = y)
 rss <- function(beta)  mean((as.matrix(dat[, 1:2]) %*% beta - y)^2) 
 grid_beta <- expand.grid(beta1 = seq(-1, 1, length.out = 50), 
                          beta2 = seq(-1, 1, length.out = 50))
