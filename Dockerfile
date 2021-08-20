@@ -43,4 +43,5 @@ RUN install2.r --error \
 
 RUN install2.r reticulate tensorflow keras \
     xgboost quantreg abind
+RUN install2.r gifski
 
