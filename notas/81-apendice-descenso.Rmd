@@ -147,7 +147,7 @@ h <- function(z) {
 h_gr <- function(z_1,z_2) apply(cbind(z_1, z_2), 1, h)
 
 grid_graf <- expand.grid(z_1 = seq(-3, 3, 0.1), z_2 = seq(-3, 3, 0.1))
-grid_graf <- grid_graf %>%  mutate( val = h_gr(z_1, z_2) )
+grid_graf <- grid_graf |>  mutate( val = h_gr(z_1, z_2) )
 gr_contour <- ggplot(grid_graf, aes(x = z_1, y = z_2, z = val)) + 
   geom_contour(binwidth = 1.5, aes(colour = ..level..))
 gr_contour
@@ -182,9 +182,9 @@ Y aplicamos descenso en gradiente:
 ```{r, fig.width=5, fig.height= 3.5}
 inicial <- c(3, 1)
 iteraciones <- descenso(150, inicial , 0.1, h_grad)
-df_iteraciones <- data.frame(iteraciones) %>%
+df_iteraciones <- data.frame(iteraciones) |>
     mutate(iteracion = 1:nrow(iteraciones))
-graf_descenso_2 <- ggplot(data = df_iteraciones %>% filter(iteracion < 20)) + 
+graf_descenso_2 <- ggplot(data = df_iteraciones |> filter(iteracion < 20)) + 
   geom_contour(data = grid_graf, 
                binwidth = 1.5, aes(x = z_1, y = z_2, z = val, colour = ..level..)) + 
   geom_point(aes(x=X1, y=X2), colour = 'red', size = 3)
@@ -204,7 +204,7 @@ En este caso, para checar convergencia podemos monitorear el valor de la
 función objetivo:
 
 ```{r, fig.width=5, fig.height= 3.5}
-df_iteraciones <- df_iteraciones %>% 
+df_iteraciones <- df_iteraciones |> 
     mutate(h_valor = map2_dbl(X1, X2, ~ h(z  = c(.x,.y)))) # h no está vectorizada
 ggplot(df_iteraciones, aes(x = iteracion, y = h_valor)) + geom_point(size=1) +
     geom_line()
@@ -212,7 +212,7 @@ ggplot(df_iteraciones, aes(x = iteracion, y = h_valor)) + geom_point(size=1) +
 Y nuestra aproximación al mínimo es:
 
 ```{r}
-df_iteraciones %>% tail(1)
+df_iteraciones |> tail(1)
 ```
 
 ### Cálculo del gradiente
@@ -308,18 +308,18 @@ casas_receta <- recipe(precio_m2_miles ~ ., casas_entrena)
 
 ```{r, message=FALSE, warning=FALSE}
 # definición de estructura del modelo (regresión lineal)
-x_ent <- casas_receta %>% prep %>% juice  %>% select(-precio_m2_miles) |> as.matrix()
-y_ent <- casas_receta %>% prep %>% juice %>% pull(precio_m2_miles)
+x_ent <- casas_receta |> prep |> juice  |> select(-precio_m2_miles) |> as.matrix()
+y_ent <- casas_receta |> prep |> juice |> pull(precio_m2_miles)
 n_entrena <- nrow(x_ent)
 crear_modelo <- function(lr = 0.01){
     modelo_casas <- 
-        keras_model_sequential() %>%
+        keras_model_sequential() |>
         layer_dense(units = 1,        #una sola respuesta,
             activation = "linear",    # combinar variables linealmente
             kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
             bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
     # compilar seleccionando cantidad a minimizar, optimizador y métricas
-    modelo_casas %>% compile(
+    modelo_casas |> compile(
         loss = "mean_squared_error",  # pérdida cuadrática
         optimizer = optimizer_sgd(lr = lr), # descenso en gradiente
         metrics = list("mean_squared_error"))
@@ -329,7 +329,7 @@ crear_modelo <- function(lr = 0.01){
 modelo_casas <- crear_modelo(lr = 0.00001)
 # Ahora iteramos
 # Primero probamos con un número bajo de iteraciones
-historia <- modelo_casas %>% fit(
+historia <- modelo_casas |> fit(
   x_ent,    # x entradas
   y_ent,    # y salida o target
   batch_size = nrow(x_ent), # para descenso en gradiente
@@ -350,7 +350,7 @@ Probamos con más corridas para checar convergencia:
 ```{r}
 # Agregamos iteraciones: esta historia comienza en los últimos valores de
 # la corrida anterior
-historia <- modelo_casas %>% fit(
+historia <- modelo_casas |> fit(
   as.matrix(x_ent), # x entradas
   y_ent,            # y salida o target
   batch_size = nrow(x_ent), # para descenso en gradiente
@@ -531,17 +531,17 @@ Repetimos nuestro modelo, pero normalizando las entradas:
 
 ```{r}
 # usamos recipes para este ejemplo, no necesitas usarlo
-casas_receta <- recipe(precio_m2_miles ~ ., casas_entrena) %>%
+casas_receta <- recipe(precio_m2_miles ~ ., casas_entrena) |>
   step_normalize(all_predictors()) 
-casas_receta %>% summary()
+casas_receta |> summary()
 ```
 
 
 ```{r}
-modelo_lineal <- linear_reg() %>%
+modelo_lineal <- linear_reg() |>
   set_engine("lm")
-casas_flujo <- workflow() %>%
-  add_recipe(casas_receta) %>% 
+casas_flujo <- workflow() |>
+  add_recipe(casas_receta) |> 
   add_model(modelo_lineal)
 ```
 
@@ -553,20 +553,20 @@ library(keras)
 x_ent_s <-  prep(casas_receta) |> juice() |> select(-precio_m2_miles) |> 
   as.matrix()
 ajustar_casas <- function(modelo, x, y, n_epochs = 100){
-  ajuste <- modelo %>% fit(
+  ajuste <- modelo |> fit(
     as.matrix(x), y,
     batch_size = nrow(x_ent), # para descenso en gradiente
     epochs = n_epochs, # número de iteraciones
-    verbose = 0) %>% as_tibble()
+    verbose = 0) |> as_tibble()
   ajuste
 }
 modelo_casas_ns <- crear_modelo(0.00001)
 modelo_casas_s <- crear_modelo(0.2)
-historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) %>% 
+historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) |> 
   mutate(tipo = "Estandarizar")
-historia_ns <- ajustar_casas(modelo_casas_ns, x_ent, y_ent) %>% 
+historia_ns <- ajustar_casas(modelo_casas_ns, x_ent, y_ent) |> 
   mutate(tipo = "Sin estandarizar")
-historia <- bind_rows(historia_ns, historia_s) %>%  filter(metric == "mean_squared_error")
+historia <- bind_rows(historia_ns, historia_s) |>  filter(metric == "mean_squared_error")
 ggplot(historia, aes(x = epoch, y = value, colour = tipo)) +
      geom_line() + geom_point() +scale_x_log10() + scale_y_log10()
 ```

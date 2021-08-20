@@ -28,7 +28,8 @@ library(tidyverse)
 library(gt)
 set.seed(28015)
 beta_vec <- rnorm(100, 0, 0.2)
-beta <- tibble(term = paste0('V', 1:length(beta_vec)), valor = beta_vec)
+p <- length(beta_vec)
+beta <- tibble(term = str_c('V', 1:p), valor = beta_vec)
 head(beta)
 ```
 
@@ -36,12 +37,12 @@ head(beta)
 sim_datos <- function(n, beta){
   p <- nrow(beta)
   mat_x <- matrix(rnorm(n * p, 0, 1), n, p) + rnorm(n, 0, 5) 
-  colnames(mat_x) <- beta %>% pull(term)
-  beta_vec <- beta %>% pull(valor)
+  colnames(mat_x) <- beta |> pull(term)
+  beta_vec <- beta |> pull(valor)
   f_x <- mat_x %*% beta_vec 
   y <- as.numeric(f_x) + rnorm(n, 0, 1)
   datos <- as_tibble(mat_x) 
-  datos %>% mutate(y = y)
+  datos |> mutate(y = y)
 }
 datos <- sim_datos(n = 4000, beta = beta)
 ```
@@ -51,21 +52,21 @@ library(tidymodels)
 set.seed(994)
 separacion <- initial_split(datos, 0.03)
 dat_ent <- training(separacion)
-modelo <-  linear_reg() %>% set_engine("lm")
+modelo <-  linear_reg() |> set_engine("lm")
 receta <- recipe(y ~ ., dat_ent)
-flujo <- workflow() %>% 
-  add_model(modelo) %>% 
+flujo <- workflow() |> 
+  add_model(modelo) |> 
   add_recipe(receta)
-mod_1  <- fit(flujo, dat_ent) %>% pull_workflow_fit()
+mod_1  <- fit(flujo, dat_ent) |> extract_fit_engine()
 ```
 
 ```{r}
-coefs_1 <- tidy(mod_1) %>% 
+coefs_1 <- tidy(mod_1) |> 
   left_join(beta)
 ```
 
 ```{r, fig.width = 4, fig.height=3}
-ggplot(coefs_1 %>% filter(term != "(Intercept)"), 
+ggplot(coefs_1 |> filter(term != "(Intercept)"), 
        aes(x = valor, y = estimate)) +
   geom_point() +
   xlab('Coeficientes verdaderos') + 
@@ -79,7 +80,7 @@ Con otra muestra de entrenamiento, vemos que las estimaciones tienen varianza al
 
 ```{r, fig.width = 4, fig.height=3}
 datos_ent_2 <- sim_datos(n = 120, beta = beta)
-mod_2 <- fit(flujo, datos_ent_2) %>% pull_workflow_fit()
+mod_2 <- fit(flujo, datos_ent_2) |> pull_workflow_fit()
 coefs_2 <- tidy(mod_2)
 qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') + 
   ylab('Coeficientes mod 2') +
@@ -92,10 +93,10 @@ $n=250$ como en este ejemplo, obtendremos típicamente resultados no muy buenos.
 ```{r, fig.width = 9, fig.height=4}
 library(patchwork)
 dat_pr <- testing(separacion)
-p_entrena <- predict(mod_1, dat_ent) %>% 
-  bind_cols(dat_ent %>% select(y))
-p_prueba <- predict(mod_1, dat_pr) %>% 
-  bind_cols(dat_pr %>% select(y))
+p_entrena <- predict(mod_1, dat_ent) |> 
+  bind_cols(dat_ent |> select(y))
+p_prueba <- predict(mod_1, dat_pr) |> 
+  bind_cols(dat_pr |> select(y))
 g_1 <- ggplot(p_entrena, aes(x = .pred, y = y)) +
   geom_abline(colour = "red") +
   geom_point() + 
@@ -141,13 +142,13 @@ normalizar todos los coeficientes con una misma $\lambda$.
 En este caso obtenemos:
 
 ```{r}
-modelo_reg <-  linear_reg(mixture = 0, penalty = 0.1) %>%
+modelo_reg <-  linear_reg(mixture = 0, penalty = 0.1) |>
   set_engine("glmnet", lambda.min.ratio = 1e-20)
-flujo_reg <- workflow() %>% 
-  add_model(modelo_reg) %>% 
+flujo_reg <- workflow() |> 
+  add_model(modelo_reg) |> 
   add_recipe(receta)
 flujo_reg <- fit(flujo_reg, dat_ent)
-mod_reg  <- flujo_reg %>% pull_workflow_fit()
+mod_reg  <- flujo_reg |> pull_workflow_fit()
 ```
 
 Los coeficientes del modelo penalizado son:
@@ -176,8 +177,8 @@ qplot(coefs_1$valor[-1], coefs_penalizado$estimate[-1]) +
 ```
 
 ```{r, fig.width = 8, fig.height=4}
-p_prueba_2 <- predict(mod_reg, dat_pr) %>% 
-  bind_cols(dat_pr %>% select(y))
+p_prueba_2 <- predict(mod_reg, dat_pr) |> 
+  bind_cols(dat_pr |> select(y))
 p_prueba_ambas <- bind_rows(p_prueba |> mutate(tipo = "sin penalizar"),
                             p_prueba_2 |> mutate(tipo = "penalizado"))
 ggplot(p_prueba_ambas, aes(x = y, y = .pred)) +
@@ -191,9 +192,9 @@ ggplot(p_prueba_ambas, aes(x = y, y = .pred)) +
 
 ```{r}
 metricas <- metric_set(mae, rmse)
-res_1 <- metricas(p_prueba, truth = y, estimate = .pred) %>% 
+res_1 <- metricas(p_prueba, truth = y, estimate = .pred) |> 
   mutate(tipo = "no penalizado")
-res_2 <- metricas(p_prueba_2, truth = y, estimate = .pred) %>% 
+res_2 <- metricas(p_prueba_2, truth = y, estimate = .pred) |> 
   mutate(tipo = "penalizado")
 bind_rows(res_1, res_2) |>
   arrange(.metric) |> 
@@ -213,8 +214,8 @@ Ozono para distintos días en Nueva York (@chambers83):
 
 
 ```{r, fig.width = 6, fig.height = 3}
-air_data <- airquality %>% 
-    mutate(Wind_cat = cut(Wind, quantile(Wind, c(0, 0.33, 0.66, 1)), include.lowest = T)) %>% 
+air_data <- airquality |> 
+    mutate(Wind_cat = cut(Wind, quantile(Wind, c(0, 0.33, 0.66, 1)), include.lowest = T)) |> 
     filter(!is.na(Ozone) & !is.na(Solar.R))
 air <- air_data
 ggplot(air, aes(x = Solar.R, y = Ozone,  colour = Temp)) + geom_point() +
@@ -226,13 +227,13 @@ un modelo lineal como sigue:
 
 ```{r}
 receta_ozono <- recipe(Ozone ~ Temp + Wind + Solar.R,
-                       data = air) %>% 
-  step_poly(Temp, Wind, Solar.R, degree = 2, options = list(raw = TRUE)) %>% 
+                       data = air) |> 
+  step_poly(Temp, Wind, Solar.R, degree = 2, options = list(raw = TRUE)) |> 
   step_interact(terms = ~ Temp_poly_1:Wind_poly_1 + Temp_poly_1:Solar.R_poly_1 +
                   Wind_poly_1:Solar.R_poly_1)
-ajuste_ozono <- workflow() %>% 
-  add_recipe(receta_ozono) %>% 
-  add_model(linear_reg() %>% set_engine("lm")) %>% 
+ajuste_ozono <- workflow() |> 
+  add_recipe(receta_ozono) |> 
+  add_model(linear_reg() |> set_engine("lm")) |> 
   fit(air)
 ```
 
@@ -242,9 +243,9 @@ ajuste_ozono <- workflow() %>%
 ```{r}
 pred_grid <- expand_grid(Wind = c(5,10,15), 
                          Temp = seq(60, 90, 10), 
-                         Solar.R = seq(20, 300, by = 10)) %>% 
+                         Solar.R = seq(20, 300, by = 10)) |> 
     mutate(Wind_cat = cut(Wind, quantile(airquality$Wind, c(0, 0.33, 0.66, 1)), include.lowest = T))
-pred_grid <- pred_grid %>% 
+pred_grid <- pred_grid |> 
   bind_cols(predict(ajuste_ozono, pred_grid))
 g_lineal <- ggplot(air, aes(x = Solar.R, colour = Temp)) + 
     geom_point(aes(y = Ozone)) +
@@ -265,10 +266,10 @@ de este modelo, y tiene peligro de producir predicciones desastrosas.
 Sin embargo, si usamos algo de regularización:
 
 ```{r}
-ajuste_ozono <- workflow() %>% 
-  add_recipe(receta_ozono) %>% 
-  add_model(linear_reg(mixture = 0, penalty = 0.05) %>% 
-              set_engine("glmnet", lambda.min.ratio = 1e-20)) %>% 
+ajuste_ozono <- workflow() |> 
+  add_recipe(receta_ozono) |> 
+  add_model(linear_reg(mixture = 0, penalty = 0.05) |> 
+              set_engine("glmnet", lambda.min.ratio = 1e-20)) |> 
   fit(air)
 # nota: normalmente no es necesario usar lambda.min.ratio
 ```
@@ -279,9 +280,9 @@ ajuste_ozono <- workflow() %>%
 ```{r}
 pred_grid <- expand_grid(Wind = c(5,10,15), 
                          Temp = seq(60, 90, 10), 
-                         Solar.R = seq(20, 300, by = 10)) %>% 
+                         Solar.R = seq(20, 300, by = 10)) |> 
     mutate(Wind_cat = cut(Wind, quantile(airquality$Wind, c(0, 0.33, 0.66, 1)), include.lowest = T))
-pred_grid <- pred_grid %>% 
+pred_grid <- pred_grid |> 
   bind_cols(predict(ajuste_ozono, pred_grid))
 g_lineal <- ggplot(air, aes(x = Solar.R, colour = Temp)) + 
     geom_point(aes(y = Ozone)) +
@@ -321,22 +322,22 @@ receta_casas <-
            baños_completos +  
            forma_lote + tipo_edificio + estilo + num_coches +
            año_venta, 
-         data = casas_entrena) %>% 
-  step_filter(condicion_venta == "Normal") %>% 
-  step_select(-condicion_venta, skip = TRUE) %>% 
-  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) %>% 
-  step_cut(condicion_gral, breaks = c(3, 5, 7, 8)) %>% 
-  step_mutate(sin_piso_2 = as.numeric(area_2o_piso_m2 == 0)) %>% 
-  step_unknown(tipo_sotano, calidad_sotano, new_level = "sin sótano") %>% 
-  step_other(nombre_zona, threshold = 0.02) %>% 
+         data = casas_entrena) |> 
+  step_filter(condicion_venta == "Normal") |> 
+  step_select(-condicion_venta, skip = TRUE) |> 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) |> 
+  step_cut(condicion_gral, breaks = c(3, 5, 7, 8)) |> 
+  step_mutate(sin_piso_2 = as.numeric(area_2o_piso_m2 == 0)) |> 
+  step_unknown(tipo_sotano, calidad_sotano, new_level = "sin sótano") |> 
+  step_other(nombre_zona, threshold = 0.02) |> 
   step_dummy(calidad_gral, condicion_gral, condicion_exteriores, aire_acondicionado,
         tipo_sotano, forma_lote, tipo_edificio, estilo,
-        nombre_zona, calidad_sotano) %>% 
+        nombre_zona, calidad_sotano) |> 
   step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
-        area_sotano_m2, area_2o_piso_m2):starts_with("calidad_gral")) %>% 
-  step_interact(terms = ~ area_sotano_m2:starts_with("calidad_sotano")) %>% 
+        area_sotano_m2, area_2o_piso_m2):starts_with("calidad_gral")) |> 
+  step_interact(terms = ~ area_sotano_m2:starts_with("calidad_sotano")) |> 
   step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
-        area_sotano_m2, area_2o_piso_m2):starts_with("condicion_gral")) %>% 
+        area_sotano_m2, area_2o_piso_m2):starts_with("condicion_gral")) |> 
   step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
         area_sotano_m2, area_2o_piso_m2):starts_with("nombre_zona"))
 ```
@@ -344,16 +345,16 @@ receta_casas <-
 Para ver el número de entradas de este modelo:
 
 ```{r}
-prep(receta_casas) %>% juice %>% dim()
+prep(receta_casas) |> juice |> dim()
 ```
 
 
 
 ```{r}
-modelo_penalizado <- linear_reg(mixture = 0.0, penalty = tune()) %>% 
+modelo_penalizado <- linear_reg(mixture = 0.0, penalty = tune()) |> 
   set_engine("glmnet", lambda.min.ratio = 1e-30)
-flujo_casas <- workflow() %>% 
-  add_recipe(receta_casas) %>% 
+flujo_casas <- workflow() |> 
+  add_recipe(receta_casas) |> 
   add_model(modelo_penalizado)
 ```
 
@@ -361,7 +362,7 @@ Construimos los objetos para
 
 ```{r}
 # creamos un objeto con datos de entrenamiento y de prueba
-val_split <- manual_rset(casas_split %>% list, "validación")
+val_split <- manual_rset(casas_split |> list, "validación")
 lambda_params <- parameters(penalty(range = c(-3, 3), 
                                     trans = log10_trans()))
 lambda_grid <- grid_regular(lambda_params, levels = 20)
@@ -374,10 +375,10 @@ eval_tbl <- tune_grid(flujo_casas,
                       resamples = val_split,
                       grid = lambda_grid,
                       metrics = mis_metricas) 
-ridge_ajustes_tbl <- eval_tbl %>%
-  unnest(cols = c(.metrics)) %>% 
+ridge_ajustes_tbl <- eval_tbl |>
+  unnest(cols = c(.metrics)) |> 
   select(id, penalty, .metric, .estimate)
-ridge_ajustes_tbl %>% gt()
+ridge_ajustes_tbl |> gt()
 ```
 
 
@@ -429,18 +430,18 @@ grasa_pr <- testing(grasa_particion)
 ```{r}
 # nota: con glmnet no es necesario normalizar, pero aquí lo hacemos
 # para ver los coeficientes en términos de las variables estandarizadas:
-grasa_receta <- recipe(grasacorp ~ ., grasa_ent) %>% 
-  update_role(cadera, cuello, muñeca, tobillo, rodilla, new_role = "ninguno") %>% 
-  step_normalize(all_predictors()) %>% 
+grasa_receta <- recipe(grasacorp ~ ., grasa_ent) |> 
+  update_role(cadera, cuello, muñeca, tobillo, rodilla, new_role = "ninguno") |> 
+  step_normalize(all_predictors()) |> 
   prep()
-modelo_2 <- linear_reg(mixture = 0, penalty = 0) %>% 
+modelo_2 <- linear_reg(mixture = 0, penalty = 0) |> 
   set_engine("glmnet", lambda.min.ratio = 1e-20) 
-flujo_2 <- workflow() %>% 
-  add_model(modelo_2) %>% 
+flujo_2 <- workflow() |> 
+  add_model(modelo_2) |> 
   add_recipe(grasa_receta)
-flujo_2 <- flujo_2 %>% fit(grasa_ent) 
+flujo_2 <- flujo_2 |> fit(grasa_ent) 
 modelo_2 <- pull_workflow_fit(flujo_2)
-coefs <- modelo_2 %>% pluck("fit") %>%tidy() %>% 
+coefs <- modelo_2 |> pluck("fit") |>tidy() |> 
   filter(term != "(Intercept)")
 ggplot(coefs, aes(x = lambda, y = estimate, colour = term)) +
   geom_line(size = 1.4) + scale_x_log10() +
@@ -458,7 +459,7 @@ de las variables de entrada, por
 ejemplo:
 
 ```{r}
-cor(grasa_ent %>% select(peso, abdomen, biceps, muslo)) %>% 
+cor(grasa_ent |> select(peso, abdomen, biceps, muslo)) |> 
   round(2)
 ```
 
@@ -466,17 +467,17 @@ Ahora probemos con regularización lasso:
 
 ```{r, message=FALSE, warning=FALSE}
 ## mixture = 1 es regresión lasso
-modelo_1 <-  linear_reg(mixture = 1, penalty = 0) %>% 
+modelo_1 <-  linear_reg(mixture = 1, penalty = 0) |> 
   set_engine("glmnet", lambda.min.ratio = 1e-20) 
-flujo_1 <- workflow() %>% 
-  add_model(modelo_1) %>% 
+flujo_1 <- workflow() |> 
+  add_model(modelo_1) |> 
   add_recipe(grasa_receta)
 ```
 
 ```{r}
-flujo_1 <- flujo_1 %>% fit(grasa_ent) 
+flujo_1 <- flujo_1 |> fit(grasa_ent) 
 modelo_1 <- pull_workflow_fit(flujo_1)
-coefs <- modelo_1 %>% pluck("fit") %>% tidy() %>% 
+coefs <- modelo_1 |> pluck("fit") |> tidy() |> 
   filter(term != "(Intercept)")
 ggplot(coefs, aes(x = lambda, y = estimate, colour = term)) +
   geom_line(size = 1.4) + scale_x_log10() +
@@ -488,7 +489,7 @@ salen del modelo (sus coeficientes son cero). Por ejemplo, para
 un valor de $lambda$ intermedio, obtenemos un modelo simple de la forma:
 
 ```{r}
-coefs %>% filter(step == 21) %>% 
+coefs |> filter(step == 21) |> 
   select(term, estimate, lambda)
 ```
 
