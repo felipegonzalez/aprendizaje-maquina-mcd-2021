@@ -182,7 +182,8 @@ Y aplicamos descenso en gradiente:
 ```{r, fig.width=5, fig.height= 3.5}
 inicial <- c(3, 1)
 iteraciones <- descenso(150, inicial , 0.1, h_grad)
-df_iteraciones <- data.frame(iteraciones) |>
+colnames(iteraciones) <- c("X1", "X2")
+df_iteraciones <- as_tibble(iteraciones) |>
     mutate(iteracion = 1:nrow(iteraciones))
 graf_descenso_2 <- ggplot(data = df_iteraciones |> filter(iteracion < 20)) + 
   geom_contour(data = grid_graf, 
@@ -308,8 +309,8 @@ casas_receta <- recipe(precio_m2_miles ~ ., casas_entrena)
 
 ```{r, message=FALSE, warning=FALSE}
 # definición de estructura del modelo (regresión lineal)
-x_ent <- casas_receta |> prep |> juice  |> select(-precio_m2_miles) |> as.matrix()
-y_ent <- casas_receta |> prep |> juice |> pull(precio_m2_miles)
+x_ent <- casas_receta |> prep() |> juice()  |> select(-precio_m2_miles) |> as.matrix()
+y_ent <- casas_receta |> prep() |> juice() |> pull(precio_m2_miles)
 n_entrena <- nrow(x_ent)
 crear_modelo <- function(lr = 0.01){
     modelo_casas <- 
@@ -562,7 +563,7 @@ ajustar_casas <- function(modelo, x, y, n_epochs = 100){
 }
 modelo_casas_ns <- crear_modelo(0.00001)
 modelo_casas_s <- crear_modelo(0.2)
-historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) |> 
+historia_s <- ajustar_casas(modelo_casas_s, x_ent_s, y_ent) |>
   mutate(tipo = "Estandarizar")
 historia_ns <- ajustar_casas(modelo_casas_ns, x_ent, y_ent) |> 
   mutate(tipo = "Sin estandarizar")

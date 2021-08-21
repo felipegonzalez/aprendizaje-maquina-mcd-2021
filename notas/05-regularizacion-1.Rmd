@@ -18,7 +18,7 @@ Veamos primero un ejemplo simulado.
 
 ## Ejemplo: datos simulados y varianza
 
-Consideremos un problema donde tenemos unas 100 entradas con 300 casos. Supondremos
+Consideremos un problema donde tenemos unas 100 entradas con 120 casos. Supondremos
 que la función verdadera es 
 
 $$f(x) = \sum_{j=1}^{100} \beta_j x_j$$
@@ -32,6 +32,7 @@ p <- length(beta_vec)
 beta <- tibble(term = str_c('V', 1:p), valor = beta_vec)
 head(beta)
 ```
+Simulamos datos:
 
 ```{r}
 sim_datos <- function(n, beta){
@@ -47,9 +48,13 @@ sim_datos <- function(n, beta){
 datos <- sim_datos(n = 4000, beta = beta)
 ```
 
+Separamos datos de entrenamiento y prueba y definimos y ajustamos un predictor
+lineal:
+
 ```{r, message = FALSE}
 library(tidymodels)
 set.seed(994)
+n_entrena <- nrow(datos) * 0.03
 separacion <- initial_split(datos, 0.03)
 dat_ent <- training(separacion)
 modelo <-  linear_reg() |> set_engine("lm")
@@ -57,15 +62,15 @@ receta <- recipe(y ~ ., dat_ent)
 flujo <- workflow() |> 
   add_model(modelo) |> 
   add_recipe(receta)
-mod_1  <- fit(flujo, dat_ent) |> extract_fit_engine()
+flujo_ajustado <- fit(flujo, dat_ent)
+mod_1  <- flujo_ajustado |> extract_fit_engine()
 ```
 
-```{r}
-coefs_1 <- tidy(mod_1) |> 
-  left_join(beta)
-```
+Extraemos los coeficientes y graficamos ajustados contra verdaderos:
 
 ```{r, fig.width = 4, fig.height=3}
+coefs_1 <- tidy(mod_1) |> 
+  left_join(beta, by = "term")
 ggplot(coefs_1 |> filter(term != "(Intercept)"), 
        aes(x = valor, y = estimate)) +
   geom_point() +
@@ -80,7 +85,7 @@ Con otra muestra de entrenamiento, vemos que las estimaciones tienen varianza al
 
 ```{r, fig.width = 4, fig.height=3}
 datos_ent_2 <- sim_datos(n = 120, beta = beta)
-mod_2 <- fit(flujo, datos_ent_2) |> pull_workflow_fit()
+mod_2 <- fit(flujo, datos_ent_2) |> extract_fit_engine()
 coefs_2 <- tidy(mod_2)
 qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') + 
   ylab('Coeficientes mod 2') +
@@ -88,21 +93,21 @@ qplot(coefs_1$estimate, coefs_2$estimate) + xlab('Coeficientes mod 1') +
 ```
 
 En la práctica, nosotros tenemos una sola muestra de entrenamiento. Así que, con una muestra de tamaño  
-$n=250$ como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa, aún cuando el modelo ajustado parece reproducir razonablemente bien la variable respuesta:
+$n=120$ como en este ejemplo, obtendremos típicamente resultados no muy buenos. Estos coeficientes ruidosos afectan nuestras predicciones de manera negativa, aún cuando el modelo ajustado parece reproducir razonablemente bien la variable respuesta:
   
 ```{r, fig.width = 9, fig.height=4}
 library(patchwork)
 dat_pr <- testing(separacion)
-p_entrena <- predict(mod_1, dat_ent) |> 
+preds_entrena <- predict(flujo_ajustado, dat_ent) |> 
   bind_cols(dat_ent |> select(y))
-p_prueba <- predict(mod_1, dat_pr) |> 
+preds_prueba <- predict(flujo_ajustado, dat_pr) |> 
   bind_cols(dat_pr |> select(y))
-g_1 <- ggplot(p_entrena, aes(x = .pred, y = y)) +
+g_1 <- ggplot(preds_entrena, aes(x = .pred, y = y)) +
   geom_abline(colour = "red") +
   geom_point() + 
   xlab("Predicción") + ylab("y") +
   labs(subtitle = "Muestra de entrenamiento")
-g_2 <- ggplot(p_prueba, aes(x = .pred, y = y)) + 
+g_2 <- ggplot(preds_prueba, aes(x = .pred, y = y)) + 
   geom_abline(colour = "red") +
   geom_point() + 
   xlab("Predicción") + ylab("y") +
@@ -148,7 +153,7 @@ flujo_reg <- workflow() |>
   add_model(modelo_reg) |> 
   add_recipe(receta)
 flujo_reg <- fit(flujo_reg, dat_ent)
-mod_reg  <- flujo_reg |> pull_workflow_fit()
+mod_reg  <- flujo_reg |> extract_fit_parsnip()
 ```
 
 Los coeficientes del modelo penalizado son:
@@ -177,13 +182,14 @@ qplot(coefs_1$valor[-1], coefs_penalizado$estimate[-1]) +
 ```
 
 ```{r, fig.width = 8, fig.height=4}
-p_prueba_2 <- predict(mod_reg, dat_pr) |> 
+preds_prueba_2 <- predict(mod_reg, dat_pr) |> 
   bind_cols(dat_pr |> select(y))
-p_prueba_ambas <- bind_rows(p_prueba |> mutate(tipo = "sin penalizar"),
-                            p_prueba_2 |> mutate(tipo = "penalizado"))
-ggplot(p_prueba_ambas, aes(x = y, y = .pred)) +
+preds_prueba_ambas <- bind_rows(
+          preds_prueba |> mutate(tipo = "sin penalizar"),
+          preds_prueba_2 |> mutate(tipo = "penalizado"))
+ggplot(preds_prueba_ambas, aes(x = y, y = .pred)) +
   geom_abline(colour = "red") +
-  geom_point() + 
+  geom_point(alpha = 0.3) + 
   xlab("Predicción") + ylab("y") +
   facet_wrap(~ tipo, nrow = 1) + 
   labs(subtitle = "Muestra de prueba") 
@@ -192,9 +198,9 @@ ggplot(p_prueba_ambas, aes(x = y, y = .pred)) +
 
 ```{r}
 metricas <- metric_set(mae, rmse)
-res_1 <- metricas(p_prueba, truth = y, estimate = .pred) |> 
+res_1 <- metricas(preds_prueba, truth = y, estimate = .pred) |> 
   mutate(tipo = "no penalizado")
-res_2 <- metricas(p_prueba_2, truth = y, estimate = .pred) |> 
+res_2 <- metricas(preds_prueba_2, truth = y, estimate = .pred) |> 
   mutate(tipo = "penalizado")
 bind_rows(res_1, res_2) |>
   arrange(.metric) |> 
@@ -203,7 +209,8 @@ bind_rows(res_1, res_2) |>
 
 Y vemos que los errores de predicción se reducen considerablemente.
 
-- Obsérvese que esta mejora en varianza tiene un costo: un aumento en el sesgo.
+- Obsérvese que esta mejora en varianza tiene un costo: un aumento en el sesgo (observa
+en los extremos de las predicciones regularizadas).
 - Sin embargo, lo que nos importa principalmente es reducir el error
 de predicción, y eso lo logramos escogiendo un balance sesgo-varianza apropiado para los datos y el problema.
 
@@ -228,9 +235,9 @@ un modelo lineal como sigue:
 ```{r}
 receta_ozono <- recipe(Ozone ~ Temp + Wind + Solar.R,
                        data = air) |> 
-  step_poly(Temp, Wind, Solar.R, degree = 2, options = list(raw = TRUE)) |> 
-  step_interact(terms = ~ Temp_poly_1:Wind_poly_1 + Temp_poly_1:Solar.R_poly_1 +
-                  Wind_poly_1:Solar.R_poly_1)
+  step_ns(Temp, Wind, Solar.R, deg_free = 2) |> 
+  step_interact(terms = ~ starts_with("Temp_ns"):starts_with("Wind_ns")) |> 
+  step_interact(terms = ~ starts_with("Temp_ns"):starts_with("Solar.R_ns"))
 ajuste_ozono <- workflow() |> 
   add_recipe(receta_ozono) |> 
   add_model(linear_reg() |> set_engine("lm")) |> 
@@ -256,7 +263,7 @@ g_lineal <- ggplot(air, aes(x = Solar.R, colour = Temp)) +
 g_lineal
 ```
 
-Nótese que algunos aspectos de este modelo parecen ser ruidosos: por ejemplo,
+Nótese que algunos aspectos de este modelo parecen ser muy ruidosos: por ejemplo,
 el comportamiento de las curvas para el primer pánel (donde hay pocos datos
 de temperatura baja), el hecho de que en algunos casos parece haber 
 curvaturas decrecientes e incluso predicciones negativas. No deberíamos dar
@@ -268,7 +275,7 @@ Sin embargo, si usamos algo de regularización:
 ```{r}
 ajuste_ozono <- workflow() |> 
   add_recipe(receta_ozono) |> 
-  add_model(linear_reg(mixture = 0, penalty = 0.05) |> 
+  add_model(linear_reg(mixture = 0, penalty = 3.0) |> 
               set_engine("glmnet", lambda.min.ratio = 1e-20)) |> 
   fit(air)
 # nota: normalmente no es necesario usar lambda.min.ratio
@@ -280,7 +287,7 @@ ajuste_ozono <- workflow() |>
 ```{r}
 pred_grid <- expand_grid(Wind = c(5,10,15), 
                          Temp = seq(60, 90, 10), 
-                         Solar.R = seq(20, 300, by = 10)) |> 
+                         Solar.R = seq(10, 320, by = 10)) |> 
     mutate(Wind_cat = cut(Wind, quantile(airquality$Wind, c(0, 0.33, 0.66, 1)), include.lowest = T))
 pred_grid <- pred_grid |> 
   bind_cols(predict(ajuste_ozono, pred_grid))
@@ -292,7 +299,7 @@ g_lineal <- ggplot(air, aes(x = Solar.R, colour = Temp)) +
     labs(subtitle = "Curvas de modelo lineal, para viento = 5, 10, 15") 
 g_lineal
 ```
-Este ajuste 
+Este ajuste se ve mucho más razonable.
 
 
 ## Regresión ridge: escogiendo el parámetro de complejidad
@@ -310,42 +317,43 @@ casas_split <- initial_split(casas, prop = 0.25)
 casas_entrena <- training(casas_split)
 receta_casas <- 
   recipe(precio_miles ~ calidad_gral +
-           area_hab_m2 + 
-           area_garage_m2 + area_sotano_m2 + 
-           area_2o_piso_m2 +
-           area_lote_m2 + 
-           año_construccion + año_venta +
+           area_hab_m2 + area_garage_m2 + area_sotano_m2 + area_2o_piso_m2 + 
+           año_construccion + año_venta + condicion_venta +
            nombre_zona + 
-           aire_acondicionado + condicion_venta +
-           condicion_gral + condicion_exteriores + tipo_sotano +
-           calidad_sotano +
-           baños_completos +  
-           forma_lote + tipo_edificio + estilo + num_coches +
-           año_venta, 
+           condicion_gral + 
+           condicion_exteriores + 
+           tipo_sotano + calidad_sotano +
+           baños_completos +  num_coches +
+           aire_acondicionado + 
+           tipo_edificio + estilo, 
          data = casas_entrena) |> 
   step_filter(condicion_venta == "Normal") |> 
   step_select(-condicion_venta, skip = TRUE) |> 
-  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) |> 
-  step_cut(condicion_gral, breaks = c(3, 5, 7, 8)) |> 
-  step_mutate(sin_piso_2 = as.numeric(area_2o_piso_m2 == 0)) |> 
-  step_unknown(tipo_sotano, calidad_sotano, new_level = "sin sótano") |> 
-  step_other(nombre_zona, threshold = 0.02) |> 
-  step_dummy(calidad_gral, condicion_gral, condicion_exteriores, aire_acondicionado,
-        tipo_sotano, forma_lote, tipo_edificio, estilo,
-        nombre_zona, calidad_sotano) |> 
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8), include_outside_range = TRUE) |> 
+  step_cut(condicion_gral, breaks = c(3, 5, 7, 8), include_outside_range = TRUE) |> 
+  step_mutate(sin_piso_2 = as.numeric(area_2o_piso_m2 == 0)) |>
+  step_novel(tipo_sotano, calidad_sotano) |> 
+  step_novel(condicion_exteriores, tipo_edificio, estilo) |> 
+  step_unknown(tipo_sotano, calidad_sotano, new_level = "sin_sotano") |> 
+  step_unknown(condicion_exteriores) |> 
+  step_other(nombre_zona, threshold = 0.05) |> 
+  step_dummy(calidad_gral, condicion_gral, nombre_zona, aire_acondicionado,
+             calidad_sotano, tipo_sotano, condicion_exteriores, 
+             tipo_edificio, estilo) |> 
   step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
         area_sotano_m2, area_2o_piso_m2):starts_with("calidad_gral")) |> 
   step_interact(terms = ~ area_sotano_m2:starts_with("calidad_sotano")) |> 
   step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
         area_sotano_m2, area_2o_piso_m2):starts_with("condicion_gral")) |> 
   step_interact(terms = ~ c(area_hab_m2, area_garage_m2, 
-        area_sotano_m2, area_2o_piso_m2):starts_with("nombre_zona"))
+        area_sotano_m2, area_2o_piso_m2):starts_with("nombre_zona")) |> 
+  step_zv(all_predictors())
 ```
 
 Para ver el número de entradas de este modelo:
 
 ```{r}
-prep(receta_casas) |> juice |> dim()
+prep(receta_casas) |> juice() |> dim()
 ```
 
 
@@ -358,11 +366,11 @@ flujo_casas <- workflow() |>
   add_model(modelo_penalizado)
 ```
 
-Construimos los objetos para
+Construimos manualmente el conjunto de validación:
 
 ```{r}
 # creamos un objeto con datos de entrenamiento y de prueba
-val_split <- manual_rset(casas_split |> list, "validación")
+val_split <- manual_rset(casas_split |> list(), "validación")
 lambda_params <- parameters(penalty(range = c(-3, 3), 
                                     trans = log10_trans()))
 lambda_grid <- grid_regular(lambda_params, levels = 20)
@@ -440,7 +448,7 @@ flujo_2 <- workflow() |>
   add_model(modelo_2) |> 
   add_recipe(grasa_receta)
 flujo_2 <- flujo_2 |> fit(grasa_ent) 
-modelo_2 <- pull_workflow_fit(flujo_2)
+modelo_2 <- extract_fit_parsnip(flujo_2)
 coefs <- modelo_2 |> pluck("fit") |>tidy() |> 
   filter(term != "(Intercept)")
 ggplot(coefs, aes(x = lambda, y = estimate, colour = term)) +
@@ -476,7 +484,7 @@ flujo_1 <- workflow() |>
 
 ```{r}
 flujo_1 <- flujo_1 |> fit(grasa_ent) 
-modelo_1 <- pull_workflow_fit(flujo_1)
+modelo_1 <- extract_fit_parsnip(flujo_1)
 coefs <- modelo_1 |> pluck("fit") |> tidy() |> 
   filter(term != "(Intercept)")
 ggplot(coefs, aes(x = lambda, y = estimate, colour = term)) +
