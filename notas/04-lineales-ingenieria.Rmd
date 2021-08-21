@@ -373,7 +373,7 @@ receta_casas <- recipe(precio_miles ~
            data = casas_entrena) |> 
   step_filter(condicion_venta == "Normal") |> 
   step_select(-condicion_venta, skip = TRUE) |> 
-  step_cut(calidad_gral, breaks = c(3, 5, 7, 8)) |>
+  step_cut(calidad_gral, breaks = c(3, 5, 7, 8), include_outside_range = TRUE) |>
   step_novel(nombre_zona, calidad_sotano, calidad_garage) |> 
   step_unknown(calidad_sotano, calidad_garage) |> 
   step_other(nombre_zona, threshold = 0.02, other = "otras") |> 
