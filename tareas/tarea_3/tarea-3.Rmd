@@ -1,0 +1,105 @@
+---
+title: "Tarea 3"
+output: html_notebook
+---
+
+Consideramos una versión simple del modelo para predicción 
+de precios de casas.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(workflowsets)
+source("./R/casas_traducir_geo.R")
+```
+
+
+```{r, message=FALSE}
+set.seed(83)
+casas_split <- initial_split(casas |> filter(condicion_venta == "Normal"), 0.85)
+# preparar split entrena y validación
+muestras_split <- manual_rset(list(casas_split), "split_validación")
+# datos de entrenamiento
+entrena <- training(casas_split)
+```
+
+
+```{r}
+# base
+receta_1 <- recipe(precio_miles ~ area_hab_m2, data = entrena)
+# agregar como dummy calidad general
+receta_2 <- recipe(precio_miles ~ area_hab_m2 + calidad_gral, 
+                   data = entrena) 
+# agregar interaccion calidad-area
+receta_3 <- receta_2 |> 
+  step_interact( ~ area_hab_m2:calidad_gral)
+```
+
+```{r}
+modelo_lineal <- linear_reg()
+```
+
+```{r}
+# podemos examinar varias combinaciones de preprocesamiento y modelos
+conjunto_wf <- workflow_set(
+  preproc = list(base = receta_1, 
+                con_calidad = receta_2,
+                interaccion = receta_3),
+  models = list(lineal = modelo_lineal),
+  cross = TRUE
+)
+```
+
+```{r}
+mis_metricas <- metric_set(rmse, mae)
+resultados <- conjunto_wf |> 
+  workflow_map("fit_resamples", 
+               resamples = muestras_split, 
+               metrics = mis_metricas)
+```
+
+```{r}
+# extraer de 
+resultados |> select(wflow_id, result) |> 
+  unnest(c(result)) |> 
+  unnest(c(.metrics)) |> 
+  filter(.metric == "rmse") |> 
+  select(wflow_id, id, .metric, .estimate)
+```
+
+**Pregunta 1**: ¿Cuál es el modelo que se desempeña mejor? 
+**Pregunta 2**: ¿Cuántas entradas tiene cada modelo? (tip: puedes usar juice(prep(receta)) por ejemplo).
+
+Haz una gráfica que muestre cómo funciona el modelo con interacciones,
+y comparalo con el modelo sin interacciones. Puedes comenzar con 
+este código:
+
+```{r}
+datos_grafica <- crossing(area_hab_m2 = quantile(entrena$area_hab_m2, seq(0, 1, 0.1)),
+                          calidad_gral = seq(2, 10))
+wflow_1 <- extract_workflow(resultados, "con_calidad_lineal") |> 
+  finalize_workflow(parameters = list()) |> 
+  fit(entrena)
+
+preds_tbl <- predict(wflow_1, datos_grafica) |> 
+  bind_cols(datos_grafica)
+ggplot(preds_tbl, aes(x = area_hab_m2, y = .pred, 
+                      colour = calidad_gral, group = calidad_gral)) + 
+  geom_line()
+```
+
+**Pregunta 3**: repite para los otros modelos para entender cómo
+funcionan las predicciones de cada uno. 
+
+**Pregunta 4** (Más difícil) Prueba agregando un término no lineal
+a calidad general. ¿Qué tanto mejora el modelo en términos de 
+error? ¿Cuántas entradas tiene este modelo? 
+¿Qué diferencia ves en las predicciones de este modelo con respecto a los
+anteriores? 
+
+```{r}
+receta_4 <- receta_2 |> 
+  step_poly(calidad_gral, degree = 2) |> 
+  step_interact( ~ area_hab_m2:starts_with("calidad_gral"))
+```
+
