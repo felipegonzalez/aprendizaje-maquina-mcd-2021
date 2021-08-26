@@ -481,6 +481,19 @@ En nuestros dos ejemplos, intuímos que vecinos más cercanos sufre más de vari
 o sobreajuste y regresión lineal de sesgo. Podemos verificar viendo qué pasa con
 los dos métodos cuando los entrenamos con la población completa.
 
+**Nota**: La descomposición del error también podemos hacerla de forma
+más detallada como:
+
+$$\mathbf{y} - \hat{f}(\mathbf{x}) = \underbrace{f^* (\mathbf{x}) - f_{\lim}(\mathbf{x})}_\text{sesgo especificación} + 
+\underbrace{ f_{\lim}(\mathbf{x}) - E(\hat{f}(\mathbf{x})) }_\text{sesgo estimación} +
+  \underbrace{E(\hat{f}(\mathbf{x})) - \hat{f}(\mathbf{x})}_\text{variabilidad} + 
+  \underbrace{y - f^*(\mathbf{x})}_\text{irreducible}$$
+
+
+donde el valor esperado es sobre todas las muestras de entrenamiento
+de un tamaño fijo $n$ que podríamos obtener. En esta versión, una parte del sesgo puede deberse a que nuestro método no tiene capacidad suficiente para encontrar la forma correcta de $f^*(x)$, incluso con datos completos (el primer término del sesgo), mientras que el segundo término del sesgo indica que con el tamaño de muestra $n$ que tenemos, 
+su capacidad no se puede alcanzar.
+
 ## Ejemplo: fuentes de error
 
 Vamos a ver qué sucede con nuestros dos métodos si utilizamos una muestra grande:
