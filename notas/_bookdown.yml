@@ -10,5 +10,6 @@ rmd_files: ["index.Rmd",
             "03-metodos-locales.Rmd", 
             "04-lineales-ingenieria.Rmd",
             "05-regularizacion-1.Rmd",
+            "06-intervalos-pred.Rmd",
             "81-apendice-descenso.Rmd",
             "99-referencias.Rmd"]

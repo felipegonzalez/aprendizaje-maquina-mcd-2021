@@ -17,7 +17,7 @@ con el error de predicción, que es un promedio de la pérdida seleccionada.
 
 Este enfoque es razonable en algunos casos y otros no. Es razonable cuando:
 
-- El error de predicción es relativamente chico (tenemos predicciones muy precisas),
+- el error de predicción es relativamente chico (tenemos predicciones muy precisas). Entonces
  cualquier pérdida usual que utilicemos funciona apropiadamente. 
 - Los errores son poco costosos, especialmente si comparamos con la mejoría en la automatización
 del proceso.
@@ -33,16 +33,16 @@ Sin embargo, muchos problemas de predicción no son así, y el error juega un pa
 - Los errores pueden ser relativamente grandes, de forma que dada una predicción,
 el valor observado puede producir costos grandes.
 - Nuestras predicciones van a usarse *downstream* para tomar una serie de decisiones
-que no conocemos de antemano, de forma que la estructura de costos de un error es compleja y sólo parcialmente definida. Ninguna pérdida usual refleja correctamente el costo-beneficio de usar un modelo.
+que no conocemos de antemano, y en consecuencia la estructura de costos de un error es compleja y sólo parcialmente definida. Ninguna pérdida usual refleja correctamente el costo-beneficio de usar un modelo.
 
 Ejemplos del primero puede ser el de predicción de precios de casas: errores de 20\% en
 el precio puede convertir una compra deseable en una que produce pérdidas grandes. En el segundo,
 un ejemplo es la estimación futura de compras de un cliente (asociado al valor presente
 de los clientes o usuarios): dependiendo de esta estimación puede ser que tomemos una
-serie de decisiones acerca de productos, promociones, etc. (no definidos de antemano
+serie de decisiones distintas acerca de productos, promociones, etc. (no definidos de antemano
 generalmente) para ofrecer que tienen consecuencias
 considerables. Otro ejemplo es predecir si en una tomografía hay evidencia de cáncer:
-aún cuando la probabilidad de que sea una imagen "normal" es alta (digamos 75%), una probablidad de 20% de que sea cancerígena debe ser puesta frente a los tomadores de decisiones.
+aún cuando la probabilidad de que sea una imagen "normal" es alta (digamos 75%), una probablidad de 25% de que sea cancerígena debe ser puesta frente a los tomadores de decisiones.
 
 En todos estos casos, es importante producir alguna cuantificación de la incertidumbre
 en lugar de una predicción puntual solamente (un solo precio, o una sola categoría "Normal").
@@ -80,7 +80,7 @@ cumplen o no ciertos supuestos teóricos. La idea es la siguiente:
 
 Suponiendo que los datos se extraen de forma independiente de una misma población,
 
-1. Construimos con una muestra de entrenamiento (x_i, y_i) nuestro predictor $\hat{f}(x)$
+1. Construimos con una muestra de entrenamiento $(x_i, y_i)$ nuestro predictor $\hat{f}(x)$
 2. Usamos una muestra de prueba separada para evaluar el error promedio, y adicionalmente,
 calculamos los valores $\mathbf{r}_i = |\mathbf{y}_i - \hat{f}(\mathbf{x}_i)|$
 3. Si queremos intervalos del 90%, calculamos ahora  $q$, que es el cuantil 
@@ -473,6 +473,14 @@ preds_tbl |>
 ```
 
 
+## Resumen
+
+- Los intervalos conformes producidos aquí tienen garantías de cobertura promedio, pero no necesariamente condicional a valores de $x$ particulares. 
+- El chequeo básico consiste en ver cómo se comporta la cobertura para distintos valores de la predicción.
+- Cuando un atributo $x$ es importante (por ejemplo por razones de discriminación, o razones de negocio), podemos checar la 
+cobertura condicional a $x$ (como en el ejemplo de grasa corporal de arriba).
+- Cuando la cobertura condicional no se cumple, podemos usar una muestra adicional para calibrar los intervalos. Esto se puede hacer ad-hoc o usando regresión cuantílica.
+- Una alternativa adicional que se puede utilizar es intentar estimar directamente los cuantiles de la respuesta (por ejemplo 5 y 95% para un intervalo del 90%). Existe una función de pérdida diseñada para este propósito (veremos más adelante) que se puede aplicar a regresión lineal, redes neuronales, métodos basados en árboles y otros. Igualmente, es necesario checar y calibrar si es necesario los intervalos resultantes.
 
 
 
