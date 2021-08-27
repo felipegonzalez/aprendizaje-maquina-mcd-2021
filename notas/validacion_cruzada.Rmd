@@ -1,0 +1,479 @@
+# Entrenamiento, Validación y Prueba
+
+```{r, include = FALSE}
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
+knitr::opts_chunk$set(fig.width=4, fig.height=3) 
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+scale_colour_discrete <- function(...) {
+  ggplot2::scale_colour_manual(..., values = cbb_palette)
+}
+```
+
+El enfoque que vimos arriba, en donde dividemos la muestra en dos
+partes al azar, es la manera más fácil de seleccionar modelos. En general,
+el proceso es el siguiente:
+
+- Una parte con los que ajustamos todos
+los modelos que nos interesa. Esta es la **muestra de entrenamiento**
+- Una parte como muestra de prueba, con el que evaluamos el desempeño
+de cada modelo ajustado en la parte anterior. En este contexto, 
+a esta muestra se le llama **muestra de validación**.
+- Posiblemente una muestra adicional independiente, que 
+llamamos **muestra de prueba**, con la que hacemos una evaluación
+final del modelo seleccionado arriba. Es una buena idea 
+apartar esta muestra si el proceso de validación incluye muchos métodos
+con varios parámetros afinados (como la $\lambda$ de regresión ridge).
+
+```{r, out.width=450}
+knitr::include_graphics("./figuras/div_muestra.png")
+```
+
+Cuando tenemos datos abundantes, este enfoque es el usual. Por ejemplo,
+podemos dividir la muestra en 50-25-25 por ciento. Ajustamos modelos
+con el primer 50\%, evaluamos y seleccionamos con el segundo 25\% y finalmente,
+si es necesario, evaluamos el modelo final seleccionado con la muestra 
+final de 25\%. 
+
+La razón de este proceso es que así podemos ir y venir entre
+entrenamiento y validación, buscando mejores enfoques y modelos, y
+no ponemos en riesgo la estimación final del error. (Pregunta: ¿por qué
+probar agresivamente buscando mejorar el error de validación podría
+ponder en riesgo la estimación final del error del modelo seleccionado? )
+
+Pudes ver el ejemplo anterior donde usamos esta estrategia para evaluar
+distintos valores de $\lambda$.
+
+
+
+### Validación cruzada
+
+En muchos casos, no queremos apartar una muestra de validación para seleccionar modelos,
+pues no tenemos muchos datos (al dividir la muestra obtendríamos
+un modelo relativamente malo en relación al que resulta de todos los datos).
+
+Un criterio para seleccionar la regularización adecuada
+es el de **validación cruzada*, que es un método computacional
+para producir una estimación interna (usando sólo muestra de entrenamiento)
+del error de predicción.
+
+Validación cruzada también tiene nos da diagnósticos adicionales para entender
+la variación del desempeño según el conjunto de datos de entrenamiento que usemos,
+algo que es más difícil ver si solo tenemos una muestra de validación.
+
+
+En validación cruzada (con $k$ vueltas), 
+construimos al azar una partición, con tamaños similares, de la muestra de entrenamiento
+${\mathcal L}=\{ (x_i,y_i)\}_{i=1}^n$:
+
+$$ {\mathcal L}={\mathcal L}_1\cup {\mathcal L}_2\cup\cdots\cup {\mathcal L}_k.$$
+
+```{r, out.width=320}
+knitr::include_graphics("./figuras/div_muestra_cv.png")
+```
+
+Construimos $k$ modelos distintos, digamos $\hat{f}_j$, usando solamente
+la muestra ${\mathcal L}-{\mathcal L}_j$, para $j=1,2,\ldots, k$. Cada uno de estos modelos lo evaluamos
+usando la parte que no usamos para entrenarlo, ${\mathcal L}_j$, 
+para obtener una 
+estimación honesta del error del modelo $\hat{f}_k$, a la que denotamos
+por $\hat{e}_j$. 
+
+Notemos entonces que tenemos $k$ estimaciones del error
+$\hat{e}_1,\ldots, \hat{e}_k$, una para cada uno de los modelos que construimos.
+La idea ahora es que
+
+- Cada uno de los modelos $\hat{f}_j$ es similar al modelo ajustado
+con toda la muestra $\hat{f}$, de forma que podemos pensar
+que cada una de las estimaciones $\hat{e}_j$ es un estimador del error de $\hat{f}$.
+- Dado el punto anterior, podemos construir una mejor estimación
+promediando las $k$ estimaciones anteriores, para obtener:
+$$\widehat{cv} = \frac{1}{k} \sum_{j=1}^k \hat{e}_j.$$
+- ¿Cómo escoger $k$? Usualmente se usan $k=5,10,20$, y $k=10$ es el más popular.
+La razón es que cuando $k$ es muy chico, tendemos a evaluar modelos construidos
+con pocos datos (comparado al modelo con todos los datos de entrenamiento). Por otra
+parte, cuando $k$ es grande el método puede ser muy costoso (por ejemplo, si 
+$k=N$, hay que entrenar un modelo para cada dato de entrada).
+
+
+### Ejemplo {-}
+
+Consideremos nuestro problema de predicción de grasa corporal.
+Definimos el flujo de procesamiento, e indicamos qué parametros queremos afinar:
+
+```{r, messages = FALSE}
+library(tidyverse)
+library(tidymodels)
+dat_grasa <- read_csv(file = '../datos/bodyfat.csv') 
+set.seed(99813)
+grasa_particion <- initial_split(dat_grasa, 0.5)
+grasa_ent <- training(grasa_particion)
+
+```
+Examinamos brevemente los datos
+
+```{r}
+ggplot(grasa_ent, aes(x = 2.54 * estatura, y = 0.454 * peso)) +
+  geom_point() + xlab("Estatura (cm)") + ylab("Peso (kg)")
+```
+
+Y observamos un datos que es probablemente un error de captura, o quizá una
+forma de cuerpo para la que no necesariamente quisiéramos hacer predicciones
+con nuestro modelo. Incluímos este filtro en nuestra receta:
+
+
+```{r}
+grasa_receta <- recipe(grasacorp ~ ., grasa_ent) |> 
+  step_filter(estatura < 120)
+# con tune() indicamos que ese parámetro será afinado
+modelo_regularizado <-  linear_reg(mixture = 0, penalty = tune()) |> 
+  set_engine("glmnet", lambda.min.ratio = 1e-20) 
+flujo_reg <- workflow() %>% 
+  add_model(modelo_regularizado) %>% 
+  add_recipe(grasa_receta)
+```
+
+
+```{r}
+# construimos conjunto de parámetros
+bf_set <- parameters(penalty(range = c(-2, 2), trans = log10_trans()))
+# construimos un grid para probar valores individuales
+bf_grid <- grid_regular(bf_set, levels = 50)
+bf_grid
+```
+Ya hora construimos los cortes de validación cruzada. Haremos
+validación cruzada 10
+
+```{r}
+validacion_particion <- vfold_cv(grasa_ent, v = 10)
+# tiene información de índices en cada "fold" o "doblez"vuelta"
+validacion_particion
+```
+
+Y corremos sobre todo el grid los modelos, probando con los cortes de validación
+cruzada:
+
+```{r}
+metricas_vc <- tune_grid(flujo_reg,
+  resamples = validacion_particion,
+  grid = bf_grid,
+  metrics = metric_set(rmse, mae)) 
+metricas_vc %>% unnest(.metrics)
+```
+Vemos que esta función da un valor del error para cada vuelta de validación
+cruzada, y cada valor de lambda que pusimos en el grid:
+
+```{r}
+metricas_vc %>% unnest(.metrics) %>%  group_by(id, .metric) %>% count()
+```
+Y ahora podemos graficar:
+
+```{r}
+ggplot(metricas_vc %>% unnest(.metrics) %>% filter(.metric == "rmse"), 
+       aes(x = penalty, y = .estimate)) + geom_point() +
+  scale_x_log10()
+```
+
+Nótese que para valores bajos de penalización hay variación considerable en el error
+(los modelos cambian mucho de corrida a corrida). Para resumir, como explicamos arriba,
+podemos resumir con media y error estándar:
+
+```{r}
+metricas_resumen <- metricas_vc %>% 
+  collect_metrics()
+metricas_resumen
+```
+
+```{r}
+g_1 <- ggplot(metricas_resumen %>% filter(.metric == "rmse"), 
+       aes(x = penalty, y = mean, ymin = mean - std_err, ymax = mean + std_err)) +
+  geom_linerange() +
+  geom_point(colour = "red") +
+  scale_x_log10()
+g_1
+```
+
+Nótese que la estimación del error de predicción por validación
+cruzada incluye un error de estimación (intervalos). Esto nos
+da dos opciones para escoger la lambda final:
+
+- Escoger la que de el mínimo valor de error por validación cruzada
+- Escoger la lambda más grande *que no esté a más de 1 error estándar
+del mínimo.*
+
+Podemos obtener estos resultados de esta forma:
+
+```{r}
+metricas_vc %>% show_best(metric = "rmse")
+minimo <- metricas_vc %>% select_best(metric = "rmse")
+minimo_ee <- metricas_vc %>% select_by_one_std_err(metric = "rmse", desc(penalty))
+```
+
+
+En la gráfica se muestran las dos posiblidades:
+
+```{r}
+g_1 +
+  geom_vline(data= minimo, aes(xintercept = penalty), colour = "blue") +
+  geom_vline(data = minimo_ee, aes(xintercept = penalty), colour = "blue")
+```
+
+*Nota*: aún cuando la mejora en desempeño predictivo al usar regularización
+no sea muy grande, obtenemos modelos más parsimoniosos, interpretables y robustos al aplicarla.
+
+Finalmente, graficamos sobre la muestra de prueba 
+
+```{r}
+modelo_final <- finalize_workflow(flujo_reg, minimo_ee) |> 
+  fit(grasa_ent)
+preds_tbl <- predict(modelo_final, testing(grasa_particion)) |> 
+  bind_cols(testing(grasa_particion))
+ggplot(preds_tbl, aes(x = .pred, y = grasacorp)) +
+  geom_point() +
+  geom_abline(colour = "red") +
+  coord_obs_pred()
+```
+
+**Observación**: Nótese que obtenemos en particular una predicción
+con un error considerablemente más grande que el resto: Si examinamos:
+
+```{r}
+preds_tbl |> mutate(error_abs = abs(grasacorp  - .pred)) |> 
+  arrange(desc(error_abs)) |> head()
+```
+
+Y vemos que el peso de este ejemplo sale fuera
+del rango que vimos en entrenamiento:
+
+```{r}
+preds_tbl |> mutate(error_abs = abs(grasacorp  - .pred)) |> 
+  mutate(error_grande = error_abs > 16 ) |> 
+ggplot(aes(x = estatura, y = peso, colour = factor(error_grande))) +
+  geom_point()
+```
+
+Lo que explica el tamaño del error para este caso.
+
+
+### ¿Cómo se desempeña validación cruzada como estimación del error?
+
+Podemos comparar el desempeño estimado con validación cruzada con el de
+muestra de prueba: Consideremos nuestro ejemplo simulado de regresión logística. Repetiremos
+varias veces el ajuste y compararemos el error de prueba con el estimado por validación cruzada:
+
+
+```{r}
+set.seed(28015)
+a_vec <- rnorm(100, 0, 0.2)
+a <- tibble(term = paste0('V', 1:length(a_vec)), valor = a_vec)
+modelo_1 <- linear_reg(penalty = 0.01) %>% 
+    set_engine("glmnet", lambda.min.ratio = 1e-20) 
+flujo_1 <- workflow() %>% 
+    add_model(modelo_1) %>% 
+    add_formula(y ~ .)
+sim_datos <- function(n, beta){
+  p <- nrow(beta)
+  mat_x <- matrix(rnorm(n * p, 0, 0.5), n, p) + rnorm(n) 
+  colnames(mat_x) <- beta %>% pull(term)
+  beta_vec <- beta %>% pull(valor)
+  f_x <- (mat_x %*% beta_vec) 
+  y <- as.numeric(f_x) + rnorm(n, 0, 1)
+  datos <- as_tibble(mat_x) %>% 
+    mutate(y = y) 
+  datos
+}
+simular_evals <- function(rep, flujo, beta){
+  datos <- sim_datos(n = 4000, beta = beta[1:40, ])
+  particion <- initial_split(datos, 0.05)
+  datos_ent <- training(particion)
+  datos_pr <- testing(particion)
+
+  # evaluar con muestra de prueba
+  metricas <- metric_set(rmse)
+  flujo_ajustado <- flujo_1 %>% fit(datos_ent)
+  eval_prueba <- predict(flujo_ajustado, datos_pr) %>% 
+    bind_cols(datos_pr %>% select(y)) %>% 
+    metricas(y, .pred)
+  eval_entrena <- predict(flujo_ajustado, datos_ent) %>% 
+    bind_cols(datos_ent %>% select(y)) %>% 
+    metricas(y, .pred)
+  # particionar para validación cruzada
+  particiones_val_cruzada <- vfold_cv(datos_ent, v = 10)
+  eval_vc <- flujo_1 %>% 
+    fit_resamples(resamples = particiones_val_cruzada, metrics = metricas) %>% 
+    collect_metrics()
+  res_tbl <- 
+    eval_prueba %>% mutate(tipo = "prueba") %>% 
+    bind_rows(eval_entrena %>% mutate(tipo = "entrenamiento")) %>% 
+    bind_rows(eval_vc %>% 
+              select(.metric, .estimator, .estimate = mean) %>% 
+              mutate(tipo = "val_cruzada"))
+}
+```
+
+```{r}
+set.seed(82853)
+evals_tbl <- tibble(rep = 1:25) %>% 
+  mutate(data = map(rep, ~ simular_evals(.x, flujo_1, beta = a))) %>% 
+  unnest(data)
+```
+
+```{r, fig.width = 6}
+ggplot(evals_tbl %>% 
+        filter(.metric == "rmse") %>% 
+        pivot_wider(names_from = tipo, values_from = .estimate) %>% 
+        pivot_longer(cols = c(entrenamiento, val_cruzada), names_to = "tipo"), 
+       aes(x = prueba, y = value)) +
+  geom_point() + facet_wrap(~ tipo) +
+  geom_abline(colour = "red") + 
+  xlab("Error de predicción (prueba)") +
+  ylab("Error estimado") + coord_equal() + xlim(0.8, 1.2)
+```
+
+Observa los rangos de los ejes. Vemos que aunque los dos tipos de estimaciones
+están centradas 
+en lugares similares, el error por validación
+cruzada es ligeramente pesimista (como esperábamos), y no está muy correlacionado
+con el error de prueba.
+
+Sin embargo, cuando usamos validación cruzada para seleccionar
+modelos tenemos lo siguiente:
+
+
+```{r}
+set.seed(8559)
+datos <- sim_datos(n = 4000, beta = beta[1:40, ])
+modelo <- linear_reg(mixture = 0, penalty = tune()) %>% 
+  set_engine("glmnet") 
+flujo <- workflow() %>% 
+    add_model(modelo) %>% 
+    add_formula(y ~ .)
+# crear partición de análisis y evaluación
+particion_val <- validation_split(datos, 0.05)
+candidatos <- tibble(penalty = exp(seq(-5, 5, 1)))
+# evaluar
+val_datos <- tune_grid(flujo, resamples = particion_val, grid = candidatos,
+                       metrics = metric_set(rmse, mae)) %>% 
+  collect_metrics() %>% 
+  select(penalty, .metric, mean) %>% 
+  mutate(tipo ="datos de validación")
+```
+
+
+```{r}
+# extraer datos de entrenamiento
+datos_ent <- analysis(particion_val$splits[[1]])
+particion_vc <- vfold_cv(datos_ent, v = 10)
+val_cruzada <- tune_grid(flujo, resamples = particion_vc, grid = candidatos,
+                         metrics = metric_set(rmse, mae)) %>% 
+  collect_metrics() %>%
+  select(penalty, .metric, mean) %>% 
+  mutate(tipo = "validación cruzada")
+```
+
+```{r}
+comparacion_val <- bind_rows(val_datos, val_cruzada) %>% 
+  filter(.metric == "mae")
+ggplot(comparacion_val, aes(x = penalty, y = mean, colour = tipo)) +
+  geom_line() + geom_point() +
+  facet_wrap(~.metric) +
+  scale_x_log10()
+```
+
+
+
+Vemos que la estimación en algunos casos no es tan buena, aún cuando
+todos los datos fueron usados. Pero el mínimo se encuentra en lugares
+muy similares. La razón es:
+
+
+
+```{block2, type='comentario'}
+**Validación cruzada** en realidad considera 
+perturbaciones del conjunto de entrenamiento, de forma que lo que 
+intenta evaluar es el error producido, para cada lambda, **sobre 
+distintas muestras de entrenamiento**.
+En realidad nosotros queremos evaluar el error de predicción del
+modelo que ajustamos. Validación cruzada es más un estimador
+del error esperado de predicción sobre los modelos que ajustaríamos
+con distintas muestras de entrenamiento.
+```
+
+El resultado es que:
+
+- Usamos validación cruzada para escoger la complejidad adecuada
+de la familia de modelos que consideramos.
+- Como estimación del error de predicción del modelo que ajustamos,
+validación cruzada es más seguro que usar el error de entrenamiento, que
+muchas veces puede estar fuertemente sesgado hacia abajo. Sin embargo, lo
+mejor en este caso es utilizar una muestra de prueba.
+- Existen variaciones (validación cruzada anidada, puedes
+ver este [paper](https://arxiv.org/pdf/2104.00673.pdf), y está implementado
+en *tidymodels* con la función *nested_cv*) que aún cuando
+es más exigente computacionalmente, produce mejores resultados cuando
+queremos utilizarla como estimación del error de prueba.
+- Estratificación: especialmente en casos donde queremos predecir una
+variable categórica con algunas clases muy minoritarias, o cuando
+la respuesta tiene colas largas, puede ser buena idea **estratificar** la
+selecciones de muestra de prueba y las muestras de validación cruzada, de manera
+que cada corte es similar en composición de la variable respuesta. Esto
+es para evitar variación debida a la composición de muestras de validación, especialmente cuando la muestra de entrenamiento es relativamente chica.
+
+## Validación cruzada repetida
+
+Con el objeto de reducir la varianza de las estimaciones por validación 
+cruzada, podemos repetir varias veces usando distintas particiones
+seleccionadas al azar.
+
+Por ejemplo, podemos repetir 5 veces validación cruzada con 10 vueltas, y
+ajustamos un total de 50 modelos. Esto no es lo mismo que validación cruzada con
+50 vueltas. Hay razones para no subdividir tanto la muestra de entrenamiento:
+
+```{block2, type="resumen"}
+- Aunque esquemas de validación cruzada-$k$ con $k$ grande pueden ser factibles,
+estos no se favorecen por la cantidad de cómputo necesaria y porque presentan
+sesgo hacia modelos más complejos [@shao].
+- En el extremo, podemos hacer validación *leave-one-out* (LOOCV), pero 
+- En estudios de simulación se desempeñan mejor métodos con $k=5, 10, 20$, y
+cuando es posible, es mejor usar repeticiones
+```
+
+
+
+En nuestro ejemplo de grasa corporal:
+
+```{r}
+set.seed(883)
+# validación cruzada repetida
+validacion_particion <- vfold_cv(grasa_ent, v = 10, repeats = 5)
+# tiene información de índices en cada "fold" o "doblez" o "vuelta"
+validacion_particion
+metricas_vc <- tune_grid(flujo_reg,
+  resamples = validacion_particion,
+  grid = bf_grid,
+  metrics = metric_set(rmse, mae)) 
+mejor <- select_best(metricas_vc, metric = "rmse")
+mejor_1ee <- select_by_one_std_err(metricas_vc, metric = "rmse", desc(penalty))
+metricas_vc %>% unnest(.metrics)
+```
+Vemos que esta función da un valor del error para cada vuelta de validación
+cruzada, y cada valor de lambda que pusimos en el grid:
+
+```{r}
+metricas_vc %>% unnest(.metrics) %>%  group_by(id, .metric) %>% count()
+```
+
+Y obtenemos:
+
+```{r}
+metricas_resumen <- metricas_vc %>% 
+  collect_metrics()
+g_1 <- ggplot(metricas_resumen %>% filter(.metric == "rmse"), 
+       aes(x = penalty, y = mean, ymin = mean - std_err, ymax = mean + std_err)) +
+  geom_linerange() +
+  geom_point(colour = "red") +
+  scale_x_log10() +
+  geom_vline(xintercept = c(mejor$penalty, mejor_1ee$penalty), colour = "blue")
+g_1
+```
+
+
