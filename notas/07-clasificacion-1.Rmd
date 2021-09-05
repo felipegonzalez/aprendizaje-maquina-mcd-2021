@@ -362,6 +362,7 @@ que la pérdida de Brier, si queremos minimizar la pérdida logarítmica sobre t
 la población, la solución está dada por las probabilidades de clase
 
 $$p_k^*(x) = E(y_k|x) = p(g = k|x).$$  
+
 De modo que la función que queremos estimar es la misma en ambos casos. La pérdida
 de Brier sin embargo, es menos sensible a errores en los extremos de la escala
 de probabilidad.
@@ -586,6 +587,7 @@ flujo_diabetes <- workflow() %>%
   add_model(modelo_lineal) %>% 
   add_recipe(receta_diabetes)
 flujo_ajustado <- fit(flujo_diabetes, diabetes_ent)
+saveRDS(flujo_ajustado, "cache/flujo_ajustado_diabetes.rds")
 flujo_ajustado
 ```
 
@@ -794,7 +796,6 @@ Utilizaremos regresión logistica multinomial con keras y regularización L2:
 
 
 ```{r}
-# https://gist.github.com/dokato/823eb947989d5203205788d50f769766
 num_classes <- 10
 input_shape <- c(28, 28, 1)
 
@@ -805,7 +806,8 @@ x_prueba <- ropa_prueba$x / 255
 # Convert class vectors to binary class matrices
 y_entrena <- to_categorical(ropa_entrena$y, num_classes)
 y_prueba <- to_categorical(ropa_prueba$y, num_classes)
-
+if(FALSE){
+# https://gist.github.com/dokato/823eb947989d5203205788d50f769766
 #' Model definition
 #' (architecture taken from 
 #' https://keras.rstudio.com/articles/examples/mnist_cnn.html )
@@ -817,20 +819,23 @@ modelo_ropa |>
               activation = 'softmax') 
 # compile model
 modelo_ropa |>  compile(
-  loss = loss_categorical_crossentropy,
+  loss = "categorical_crossentropy",
   optimizer = optimizer_adam(lr = 0.001),
-  metrics = c('accuracy')
+  metrics = c("accuracy")
 )
 
 # train and evaluate
-modelo_ropa %>% fit(
+modelo_ropa |> fit(
   x_entrena, y_entrena,
   batch_size = 128,
   epochs = 40,
   verbose = 1,
   validation_data = list(x_prueba, y_prueba)
-)
-save_model_hdf5(modelo_ropa, "cache/red_ropa.h5")
+  )
+save_model_tf(modelo_ropa, "cache/red_ropa")
+}
+
+modelo_ropa <- load_model_tf("cache/red_ropa")
 scores <- modelo_ropa %>% evaluate(
   x_prueba, y_prueba, verbose = 0
 )

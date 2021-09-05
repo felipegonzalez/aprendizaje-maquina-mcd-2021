@@ -161,7 +161,7 @@ articulos <- c("playera/top", "pantalón", "suéter", "vestido", "abrigo", "sand
 etiquetas_tbl <- tibble(codigo = 0:9, articulo = articulos)
 x_prueba <- ropa_prueba$x / 255
 y_prueba <- to_categorical(ropa_prueba$y, 10)
-modelo <- load_model_hdf5("cache/red_ropa.h5", compile = FALSE)
+modelo <- load_model_tf("cache/red_ropa")
 ```
 
 
