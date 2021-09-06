@@ -19,7 +19,7 @@ En un **problema de clasificación** buscamos predecir una variable respuesta
 categórica $g$ en función de otras variables de entrada
 $x=(x_1,x_2,\ldots, x_p)$.
 
-### Ejemplos {-}
+#### Ejemplos {-}
 - Predecir si un cliente cae en impago de una tarjeta de crédito, de forma
 que podemos tener $g=corriente$ o $g=impago$. Variables de entrada podrían
 ser $x_1=$ porcentaje de saldo usado, $x_2=$ atrasos en los últimos 3 meses,
@@ -118,7 +118,7 @@ muestra de entrenamiento? Veremos por ahora
 dos métodos: k-vecinos más cercanos y regresión logística. 
 
 
-### Ejemplo {-}
+#### Ejemplo {-}
 
 
 Vamos a generar unos datos con el modelo simple del ejemplo anterior:
@@ -536,7 +536,7 @@ y $$p_0(x)=p_0(x;\beta)=1-p_1(x;\beta),$$
 donde $\beta=(\beta_0,\beta_1, \beta_2, \cdots, \beta_p)$.
 ```
 
-### Ejemplo {-}
+#### Ejemplo {-}
 
 Consideremos nuestro ejemplo de impago. Podemos examinar qué tipo
 de probilidades obtendríamos con regresión logística y distintos parametros beta:

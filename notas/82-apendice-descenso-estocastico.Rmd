@@ -235,7 +235,6 @@ iteraciones en el mismo tiempo. El mejor punto está entre minilotes demasiado
 chicos (no aprovechamos paralelismo) o demasiado grande (hacemos demasiado trabajo
 por iteración).
 
-
 4.La propiedad más importante de descenso estocástico en minilotes es que su convergencia no depende del tamaño del conjunto de entrenamiento, es decir,
 el 
 **tiempo de iteración para descenso estocástico
