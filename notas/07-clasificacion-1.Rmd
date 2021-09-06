@@ -68,7 +68,7 @@ como un problema de aproximar una curva $f^*(x)$ óptima con una función $\hat{
 construida a partir de datos, igualmente podemos plantear el problema de clasificación
 binaria como sigue:
 
-- Buscamos algoritmos ${\mathcal L} \ to \hat{p}(x)$ tal que $\hat{p}(x)$ está cercana
+- Buscamos algoritmos ${\mathcal L} \to \hat{p}(x)$ tal que $\hat{p}(x)$ está cercana
 a la probabilidad de clase $p^* (x) = P(y=1 |x)$.
 - Los argumentos de error irreducible, sesgo y variabilidad aplican también en esta situación
 bajo la pérdida de Brier y puede darse un argumento para cada clase (considerando
@@ -77,25 +77,11 @@ del hecho de que $p^*_k(x)$ no necesariamente toman solo los valores 0 o 1, y da
 las $x$, existe incertidumbre en la clase que vamos a observar.
 
 
-#### Ejemplo {-}
-(Impago de tarjetas de crédito) 
-Supongamos que $x=$ porcentaje del crédito máximo usado, y 
-$g\in\{\textrm{al corriente}, \textrm{impago}\}$, que corresponden
-a la clase 1 y la clase 2. Podríamos tener, por ejemplo:
-\begin{align*} 
-p_1(10\%) &= P(y=1|x=10\%) = 0.95 \\
-p_2(10\%) &= P(y=0|x=10\%) =  0.05
-\end{align*}
-y 
-\begin{align*} 
-p_1(95\%) &= P(y=1|x=95\%) = 0.70 \\
-p_2(95\%) &= P(y=0|x=95\%) =  0.30
-\end{align*}
 
 
 #### Ejemplo {-}
 (Impago de tarjetas de crédito) 
-Supongamos que $x=$ porcentaje del crédito máximo usado, y y\in\{0, 1\}$, donde
+Supongamos que $x=$ porcentaje del crédito máximo usado, y $y\in\{0, 1\}$, donde
 $1$ corresponde al corriente y $0$ representa impago.
  Las probabilidades condicionales de clase para la clase *al corriente* podrían
  ser, por ejemplo:
@@ -107,7 +93,7 @@ Estas son probabilidades y no determinan el resultado, pues hay
 otras variables que influyen en que un cliente
 permanezca al corriente o no en sus pagos más allá de información contenida en el
 porcentaje de crédito usado. Nótese que estas probabilidades son diferentes
-a las no condicionadas, por ejempo, podríamos tener que a total $P(g=1)=0.83$
+a las no condicionadas, por ejempo, podríamos tener que a total $P(y=1)=0.83$
 
 ```{r, message = FALSE}
 library(tidyverse)
@@ -121,27 +107,8 @@ ggplot(tibble(x = seq(0, 1, 0.01)), aes(x = x)) +
     ylab("Prob al corriente")
 ```
 
-¿Por qué en este ejemplo ya no mostramos la función $p_0(x)$? 
 
-## Clasificación multinomial
 
-Ahora consideramos un problema donde $g$ puede ser una de $K$ clases posibles. Tenemos
-$K$ probabilidades de clase $p(x) = (p_1(x), p_2(x), \ldots p_K(x))$ que deben sumar 1
-(de forma que una de ellas es redundante dadas las otras). Adicionalmente,
-definimos $(y_1,y_2, \ldots, y_k)$ variables indicadores de las categorías, donde
-$y_k = 1$ cuando $g = k$ y $y_l = 0$ en otro caso.
-
-La pérdida de Brier en este caso está dada por
-
-$$L(g, p(x)) = \sum_{k=1}^K (y_k - p_k(x))^2 = (1 - p_g(x))^2 + \sum_{k\neq g} (p_k(x))^2$$
-Esto quiere decir que el score de Brier
-es chico cuando $p_g(x)$, la probabilidad de la clase $g$, es cercana a uno y el 
-resto de las probabilidades son cercanas a 0 (verifica que esta definición es equivalente 
-para dos clases según la definición mostrada arriba para clasificación binaria). En este 
-caso, la solución teórica que minimiza esta pérdida promediada sobre toda la 
-población es
-
-$$p_k^*(x) = E(y_k | x) = P(g = k| x)$$
 
 
 ## Estimación de probabilidades de clase
@@ -167,13 +134,13 @@ simular_impago <- function(n = 500){
     # finalmente, simulamos cuáles clientes siguen al corriente y cuales no:
     g <- map_chr(1:length(x), ~ sample(clases, size = 1, prob = c(prob[.x], 1- prob[.x])))
     g <- factor(g, levels = c("al_corriente", "impago"))
-    dat_ent <- tibble(x = x, p_1 = prob, g = g) |> 
+    datos <- tibble(x = x, p_1 = prob, g = g) |> 
       mutate(y = ifelse(g == "al_corriente", 1, 0))
-    dat_ent
+    datos
 }
 set.seed(193)
-dat_ent  <- simular_impago() %>% select(x, g, y) 
-dat_ent %>% sample_n(20)
+dat_ent  <- simular_impago() |> select(x, g, y) 
+dat_ent |> sample_n(20)
 ```
 
 Como este problema es de dos clases, podemos graficar como sigue (agregamos
@@ -187,59 +154,37 @@ graf_1 <- ggplot(dat_ent, aes(x = x)) +
 graf_1 
 ```
 
-
-
 ## k-vecinos más cercanos 
 
-La idea general de $k$ vecinos más cercanos es simple: 
-nos fijamos en las tasas locales de impago alrededor de la $x$ para
-la que queremos predecir, y usamos esas tasas locales para estimar la probabilidad
-condicional.
 
-Supongamos entonces que tenemos un conjunto de entrenamiento
-$${\mathcal L}=\{ (x^{(1)},g^{(1)}),(x^{(2)},g^{(2)}), \ldots, (x^{(N)}, g^{(N)}) \}$$
+Para usar $k$-vecinos más cercanos para estimar la probabilidades de clase para
+cada $x$, podemos tomar una vecindad de la $x$ donde queremos
+predecir, y tomar el siguiente promedio:
 
-La idea es que si queremos predecir en $\mathbf{x}$, busquemos varios $k$ vecinos más cercanos
-a $\mathbf{x}$, y estimamos entonces $p_g(\mathbf{x})$ como la **proporción** de casos tipo $g$ que
-hay entre los $k$ vecinos de $\mathbf{x}$. 
+$$\hat{p}(x) = \frac{1}{k}\sum_{x^{(i)} \in N_k(x)} y^{(i)},$$
 
-Vemos entonces que este método es un intento de hacer una aproximación directa
-de las probabilidades condicionales de clase.
-
-Podemos escribir esto como:
-
-```{block, type='comentario'}
-**k vecinos más cercanos para clasificación**
-Estimamos contando los elementos de cada clase entre los $k$ vecinos más cercanos:
-$$\hat{p}_k (\mathbf{x})  =
-\frac{1}{k}\sum_{x^{(i)} \in N_k(\mathbf{x})} y_k^{(i)},$$
-    
-    
-para $k=1,2,\ldots, K$,  donde $N_k(\mathbf{x})$ es el conjunto de $k$ vecinos más cercanos en ${\mathcal L}$
-de $\mathbf{x}$, y las $y_k^{(i)}$ son variables indicadores de clase para el $i$-ésimo caso de entrenamiento.
-Usualmente normalizamos las variables de entrada $(x_1, \ldots, x_p)$ antes de calcular las distancias que usamos para encontrar los vecinos, especialmente si estas variables están en distintas escalas.
-```
-
+que es la proporción de unos en una vecindad $N_k(x)$ de $x$.
 
 #### Ejemplo {-}
 
-Regresamos a nuestro problema de impago. Vamos a intentar estimar la
+Vamos a intentar estimar la
 probabilidad condicional de estar al corriente usando k vecinos 
-más cercanos (curva roja):
+más cercanos:
 
 ```{r}
-vmc_modelo <- nearest_neighbor(neighbors = 100, weight_func = "gaussian") %>% 
-  set_engine("kknn") %>% 
+vmc_modelo <- nearest_neighbor(neighbors = 100, weight_func = "gaussian") |> 
+  set_engine("kknn") |> 
   set_mode("classification")
-ajuste_vmc <- vmc_modelo %>% fit(g ~ x, dat_ent)
+ajuste_vmc <- vmc_modelo |> fit(g ~ x, dat_ent)
 # para graficar:
 graf_kvmc <- tibble(x = seq(0, 1, 0.01))
-graf_kvmc <- predict(ajuste_vmc, graf_kvmc, type = "prob") %>% 
-  bind_cols(graf_kvmc) %>% 
+graf_kvmc <- predict(ajuste_vmc, graf_kvmc, type = "prob") |> 
+  bind_cols(graf_kvmc) |> 
   select(x, .pred_al_corriente)
-graf_kvmc %>% head
+graf_kvmc |> head()
 ```
 
+Y la curva roja da nuestra estimación de probabilidad de impago para cada $x4:
 
 ```{r,fig.width = 5, fig.asp = 0.7}
 graf_verdadero <- tibble(x = seq(0, 1, 0.01), p_1 = p_1(x))
@@ -250,7 +195,7 @@ graf_2 <- graf_1 +
 graf_2
 ```
 
-Igual que en el caso de regresión, ahora tenemos que usar una muestra de prueba
+Ahora podríamos usar una muestra de prueba
 para evaluar nuestra
 estimación, pues no tenemos la curva negra óptima para comparar.
 
@@ -280,27 +225,68 @@ Intentaremos predecir diabetes dependiendo del una medición de glucosa
 en la sangre:
 
 ```{r, fig.width=5, fig.asp=0.7}
-library(ggplot2)
 ggplot(diabetes_ent, aes(x = glu, y= ifelse(type=='Yes', 1, 0), colour = type)) +
   geom_jitter(height = 0.05)
 ```
 
-Usamos $30$ vecinos más cercanos para estimar $p_g(x)$:
+Usamos $30$ vecinos más cercanos para estimar $p(x)$:
 
 
 ```{r, fig.width=5, fig.asp=0.7}
 graf_data <- tibble(glu = seq(50, 200, 1))
 # ajustar modelo
-ajuste_vmc_diabetes <- vmc_modelo %>% set_args(neighbors = 50) %>% 
+ajuste_vmc_diabetes <- vmc_modelo |> set_args(neighbors = 50) |> 
   fit(type ~ glu, diabetes_ent)
 # graficar
-graf_data <- predict(ajuste_vmc_diabetes, graf_data, type = "prob") %>% 
-  bind_cols(graf_data) %>% 
+graf_data <- predict(ajuste_vmc_diabetes, graf_data, type = "prob") |> 
+  bind_cols(graf_data) |> 
   select(glu, .pred_Yes)
 ggplot(diabetes_ent, aes(x = glu)) + 
   geom_point(aes(y = as.numeric(type == "Yes"), colour = type)) + 
   geom_line(data = graf_data, aes(y = .pred_Yes)) +
   ylab('Probabilidad diabetes')
+```
+
+Finalmente, evaluamos por ejemplo con la pérdida de Brier:
+
+```{r}
+preds_tbl <- predict(ajuste_vmc_diabetes, diabetes_pr, type = "prob") |> 
+  bind_cols(diabetes_pr |> select(type)) |> 
+  mutate(y = as.numeric(type == "Yes")) 
+preds_tbl |> head()
+```
+
+
+```{r}
+preds_tbl |> 
+  rmse(truth = y, estimate = .pred_Yes)
+```
+Podemos comparar este error con la predicción que haríamos usando
+la proporción de unos en los datos, por ejemplo:
+
+```{r}
+promedio_ent <- diabetes_ent |> mutate(y = type == "Yes") |> 
+  pull(y) |> mean()
+preds_tbl |> mutate(promedio = promedio_ent) |> 
+  rmse(truth = y, estimate = promedio)
+```
+Finalmente, probemos usando todas las variables, teniendo cuidado
+de estandarizar las variables de entranda:
+
+```{r}
+receta_diabetes <- recipe(type ~ ., diabetes_ent) |> 
+  step_normalize(all_predictors())
+modelo_vmc <- vmc_modelo |> 
+  set_args(neighbors = 50) 
+flujo_vmc_diabetes <- workflow() |> 
+  add_recipe(receta_diabetes) |> 
+  add_model(modelo_vmc)
+preds_todas <- fit(flujo_vmc_diabetes, diabetes_ent) |> 
+  predict(diabetes_pr, type = "prob") |> 
+  bind_cols(diabetes_pr |> select(type)) |> 
+  mutate(y = as.numeric(type == "Yes")) 
+preds_todas |> 
+  rmse(truth = y, estimate = .pred_Yes)
 ```
 
 
@@ -348,24 +334,18 @@ ggplot(perdidas_tbl, aes(x = p, y = perdida, colour = tipo)) +
   geom_line(size = 1.1)
 ```
 
-Para el problema multiclase, la pérdida logarítmica que construimos está dada, para
-$(x,g)$ observado y probabilidades estimadas $\hat{p}_g(x)$ por
+Así que la pérdida para un caso con entradas $x$ y clase $g$ es
 
-$$
--  \log(\hat{p}_g(x)) = - \sum_{k=1}^K y_i \log(\hat{p}_k(x))
-$$
-
-
-
-donde $\hat{p}_k(x)$ son las probabilidades estimadas de nuestro modelo. Nótese que igual
+$$-\log \hat{p}_g (x)$$
+Se puede demostrar que, igual
 que la pérdida de Brier, si queremos minimizar la pérdida logarítmica sobre toda
-la población, la solución está dada por las probabilidades de clase
+la población, la solución está dada por las verdaderas probabilidades de clase
 
-$$p_k^*(x) = E(y_k|x) = p(g = k|x).$$  
+$$p^*(x) = E(y|x) = P(y = 1|x).$$  
 
 De modo que la función que queremos estimar es la misma en ambos casos. La pérdida
 de Brier sin embargo, es menos sensible a errores en los extremos de la escala
-de probabilidad.
+de probabilidad, y puede producir estimaciones distintas cuando se usa en entrenamiento.
 
 
 **Observaciones**:
@@ -410,7 +390,7 @@ calculamos la pérdida logarítmica de entrenamiento
 ```{r}
 s <- function(x) -log(x)
 dat_log_loss <- ajuste_vmc |>  
-  predict(dat_ent, type = "prob") %>% 
+  predict(dat_ent, type = "prob") |> 
   bind_cols(dat_ent) |> 
   select(x, g, .pred_impago, .pred_al_corriente)
 dat_log_loss <- dat_log_loss |>  
@@ -422,22 +402,22 @@ probabilidad correspondiente a la columna hat_p_g:
 
 ```{r}
 set.seed(125)
-dat_log_loss %>% sample_n(20) |> gt()
+dat_log_loss |> sample_n(20) |> gt()
 ```
 
 Ahora aplicamos la función $s$ que describimos arriba, y promediamos sobre
 el conjunto de entrenamiento:
 
 ```{r}
-dat_log_loss <- dat_log_loss %>% mutate(dev = s(hat_p_g))
-dat_log_loss %>% sample_n(20)
-dat_log_loss %>% ungroup %>% summarise(lloss_entrena = mean(dev))
+dat_log_loss <- dat_log_loss |> mutate(dev = s(hat_p_g))
+dat_log_loss |> sample_n(20)
+dat_log_loss |> ungroup() |> summarise(lloss_entrena = mean(dev))
 ```
 
 Que también podemos calcular como sigue:
 
 ```{r}
-dat_log_loss %>% mn_log_loss(g, .pred_al_corriente) %>% 
+dat_log_loss |> mn_log_loss(g, .pred_al_corriente) |> 
   mutate(.estimate = .estimate )
 ```
 
@@ -447,20 +427,53 @@ desempeño del modelo. Hagamos el cálculo entonces para una muestra de prueba:
 
 ```{r}
 set.seed(1213)
-dat_prueba <- simular_impago(n = 5000) %>% select(x, g)
+dat_prueba <- simular_impago(n = 5000) |> select(x, g)
 ## calcular para muestra de prueba
-dat_log_loss_prueba <- ajuste_vmc %>% 
-  predict(dat_prueba, type = "prob") %>% 
-  bind_cols(dat_prueba) %>% 
+dat_log_loss_prueba <- ajuste_vmc |> 
+  predict(dat_prueba, type = "prob") |> 
+  bind_cols(dat_prueba) |> 
   select(x, g, .pred_impago, .pred_al_corriente)
-dat_log_loss_prueba <- dat_log_loss_prueba %>% 
+dat_log_loss_prueba <- dat_log_loss_prueba |> 
   mutate(hat_p_g = ifelse(g == "al_corriente", .pred_al_corriente, .pred_impago))
-dat_log_loss_prueba <- dat_log_loss_prueba %>% mutate(log_loss = s(hat_p_g))
-dat_log_loss_prueba %>% ungroup %>% summarise(log_loss_prueba = mean(log_loss))
+dat_log_loss_prueba <- dat_log_loss_prueba |> mutate(log_loss = s(hat_p_g))
+dat_log_loss_prueba |> ungroup() |> summarise(log_loss_prueba = mean(log_loss))
 ```
 
 
+## Clasificación multinomial
 
+Cuando tenemos sólo dos clases (clasificación binaria), basta con estimar
+una probabilidad de clase, pues la segunda es complemento de la primera. 
+Para tres o más clases introducimos notación adicional:
+
+- Consideramos un problema donde $g$ puede ser una de $K$ clases posibles. Tenemos
+$K$ probabilidades de clase $p(x) = (p_1(x), p_2(x), \ldots p_K(x))$ que deben sumar 1
+(de forma que una de ellas es redundante dadas las otras). 
+
+- Definimos $(y_1,y_2, \ldots, y_k)$ variables indicadoras de las categorías, donde
+$y_k = 1$ cuando $g = k$ y $y_k = 0$ en otro caso.
+
+La pérdida de Brier en este caso se puede definir como
+
+$$L(g, p(x)) = \sum_{k=1}^K (y_k - p_k(x))^2 = (1 - p_g(x))^2 + \sum_{k\neq g} (p_k(x))^2$$
+Esto quiere decir que el score de Brier
+es chico cuando $p_g(x)$, la probabilidad de la clase $g$, es cercana a uno y el 
+resto de las probabilidades son cercanas a 0 (verifica que esta definición es equivalente 
+para dos clases según la definición mostrada arriba para clasificación binaria). En este 
+caso, la solución teórica que minimiza esta pérdida promediada sobre toda la 
+población es
+
+$$p_k^*(x) = E(y_k | x) = P(g = k| x)$$
+
+Si usamos la pérdida logarítmica, entonces la pérdida es
+
+$$L(g, p(x)) = -\log p_g (x),$$
+que en nuestra notación con indicadoras se escribe como
+
+$$L(y, p(x)) = -\sum_{k=1}^K y_k\log p_k (x),$$
+
+**Ejercicio**: escribe las estimaciones de clase de $k$-vecinos más cercanos
+para clasificación multinomial.
 
 ## Regresión logística
 
@@ -537,11 +550,11 @@ crear_p <- function(beta_0, beta_1){
 df_grid <- tibble(x = seq(0, 1, 0.01))
 betas <- tibble(beta_0 = c(-5, -0.5, 2.5),
                 beta_1 = c(10,   -2, -4))
-betas <- betas %>% 
-    mutate(p = map2(beta_0, beta_1, crear_p)) %>% 
-    mutate(grid = map(p, ~ df_grid %>% mutate(p_1 = .(x)))) %>% 
-    select(-p) %>% 
-    mutate(fun_nom = paste(beta_0, "+", beta_1, "x")) %>% 
+betas <- betas |> 
+    mutate(p = map2(beta_0, beta_1, crear_p)) |> 
+    mutate(grid = map(p, ~ df_grid |> mutate(p_1 = .(x)))) |> 
+    select(-p) |> 
+    mutate(fun_nom = paste(beta_0, "+", beta_1, "x")) |> 
     unnest(cols = c(grid))
 graf_1 + geom_line(data = betas, aes(x = x, y = p_1)) + facet_wrap(~fun_nom) 
 ```
@@ -573,18 +586,18 @@ diabetes_pr$id <- 1:nrow(diabetes_pr)
 Aunque no es necesario, podemos normalizar:
 
 ```{r, message=FALSE, warning=FALSE }
-receta_diabetes <- recipe(type ~ ., diabetes_ent) %>%
-  update_role(id, new_role = "id_variable") %>% 
+receta_diabetes <- recipe(type ~ ., diabetes_ent) |>
+  update_role(id, new_role = "id_variable") |> 
   step_normalize(all_numeric()) 
-diabetes_ent_s <- receta_diabetes %>% prep() %>% juice() 
-diabetes_pr_s <- receta_diabetes %>% prep() %>% bake(diabetes_pr)
+diabetes_ent_s <- receta_diabetes |> prep() |> juice() 
+diabetes_pr_s <- receta_diabetes |> prep() |> bake(diabetes_pr)
 ```
 
 ```{r}
-modelo_lineal <- logistic_reg(mode = "classification") %>% 
+modelo_lineal <- logistic_reg(mode = "classification") |> 
   set_engine("glm")
-flujo_diabetes <- workflow() %>% 
-  add_model(modelo_lineal) %>% 
+flujo_diabetes <- workflow() |> 
+  add_model(modelo_lineal) |> 
   add_recipe(receta_diabetes)
 flujo_ajustado <- fit(flujo_diabetes, diabetes_ent)
 saveRDS(flujo_ajustado, "cache/flujo_ajustado_diabetes.rds")
@@ -596,9 +609,9 @@ Ahora calculamos devianza de prueba y error de clasificación:
 
 ```{r}
 preds_prueba <- 
-  predict(flujo_ajustado, diabetes_pr, type= "prob") %>% 
-  bind_cols(predict(flujo_ajustado, diabetes_pr)) %>% 
-  bind_cols(diabetes_pr %>% select(type))
+  predict(flujo_ajustado, diabetes_pr, type= "prob") |> 
+  bind_cols(predict(flujo_ajustado, diabetes_pr)) |> 
+  bind_cols(diabetes_pr |> select(type))
 preds_prueba
 ```
 
@@ -616,27 +629,27 @@ metricas(preds_prueba, truth = type, .pred_Yes, estimate = .pred_class,
 Vamos a repetir usando keras.
 ```{r, message=FALSE, warning = FALSE}
 library(keras)
-x_ent <- diabetes_ent_s %>% select(-type, -id) %>% as.matrix
+x_ent <- diabetes_ent_s |> select(-type, -id) |> as.matrix()
 y_ent <- diabetes_ent_s$type == "Yes"
-x_prueba <- diabetes_pr_s %>% select(-type, -id) %>% as.matrix
+x_prueba <- diabetes_pr_s |> select(-type, -id) |> as.matrix()
 y_prueba <- diabetes_pr_s$type == 'Yes'
 # definición de estructura del modelo (regresión logística)
 # es posible hacerlo con workflows como vimos arriba, 
 # pero aquí usamos directamente la interfaz de keras en R
 n_entrena <- nrow(x_ent)
-modelo_diabetes <- keras_model_sequential() %>%
+modelo_diabetes <- keras_model_sequential() |>
         layer_dense(units = 1,        #una sola respuesta,
             activation = "sigmoid",    # combinar variables linealmente y aplicar función logística
             kernel_initializer = initializer_constant(0), #inicializamos coeficientes en 0
             bias_initializer = initializer_constant(0))   #inicializamos ordenada en 0
 # compilar seleccionando cantidad a minimizar, optimizador y métricas
-modelo_diabetes %>% compile(
+modelo_diabetes |> compile(
         loss = "binary_crossentropy",  # devianza es entropía cruzada
         optimizer = optimizer_sgd(lr = 0.75), # descenso en gradiente
         metrics = list("binary_crossentropy"))
 # Ahora iteramos
 # Primero probamos con un número bajo de iteraciones
-historia <- modelo_diabetes %>% fit(
+historia <- modelo_diabetes |> fit(
   as.matrix(x_ent), # x entradas
   y_ent,            # y salida o target
   batch_size = nrow(x_ent), # para descenso en gradiente
@@ -646,7 +659,7 @@ plot(historia)
 ```
 Y ahora podemos correr más iteraciones *adicionales*:
 ```{r}
-historia <- modelo_diabetes %>% fit(
+historia <- modelo_diabetes |> fit(
   as.matrix(x_ent), # x entradas
   y_ent,            # y salida o target
   batch_size = nrow(x_ent), # para descenso en gradiente
@@ -671,7 +684,7 @@ diferencia es que el algoritmo de optimización que se usa en cada caso es difer
 *keras* utilizamos descenso en gradiente, mientras que *glm* usa Newton-Raphson.
 
 ```{r}
-flujo_ajustado |> pull_workflow_fit()
+flujo_ajustado |> extract_fit_parsnip()
 ```
 
 ## Probabilidades y pérdida 0-1
@@ -681,8 +694,8 @@ el *error de clasificación*, que también llamamos *probabilidad de clasificaci
 incorrecta*, o error bajo pérdida 0-1. 
 
 ```{block2, type='comentario'}
-Sean $\hat{p}_g(x)$ probabilidades de clase estimadas. El clasificador asociado
-está dado por
+Sean $\hat{p}_g(x)$ probabilidades de clase estimadas. El clasificador bajo pérdida 0-1
+asociado está dado por
 $$\hat{g} (x) = \arg\max_g \hat{p}_g(x)$$
 Podemos estimar su  error de clasificación $P(\hat{g}(x) \neq g)$ con una muestra
 de prueba
@@ -836,7 +849,7 @@ save_model_tf(modelo_ropa, "cache/red_ropa")
 }
 
 modelo_ropa <- load_model_tf("cache/red_ropa")
-scores <- modelo_ropa %>% evaluate(
+scores <- modelo_ropa |> evaluate(
   x_prueba, y_prueba, verbose = 0
 )
 cat('Test pérdida:', scores[[1]], '\n')
