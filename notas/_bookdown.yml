@@ -13,6 +13,7 @@ rmd_files: ["index.Rmd",
             "06-intervalos-pred.Rmd",
             "07-clasificacion-1.Rmd",
             "08-clasificacion-calibracion.Rmd",
+            "09-clasificacion-2.Rmd",
             "81-apendice-descenso.Rmd",
             "82-apendice-descenso-estocastico.Rmd",
             "99-referencias.Rmd"]

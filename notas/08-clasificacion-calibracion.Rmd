@@ -175,25 +175,25 @@ preds_tbl <- as_tibble(preds_mat) |>
 preds_tbl |> head() |> gt() |> fmt_number(where(is_double), decimals = 3)
 ```
 
-Nuestra gráfica de calibración para la categoría *suéter* es:
+Nuestra gráfica de calibración para la categoría *camisa* es:
 
 ```{r}
-preds_tbl |>  select(suéter, articulo) |> 
-  mutate(obs_sueter = articulo == "suéter") |> 
-  mutate(grupo_prob = cut_number(suéter, 60)) |> 
+preds_tbl |>  select(camisa, articulo) |> 
+  mutate(obs_camisa = articulo == "camisa") |> 
+  mutate(grupo_prob = cut_number(camisa, 40)) |> 
   group_by(grupo_prob) |> 
   summarise(n = n(),
-      pred_sueter = mean(suéter), 
-      prop_sueter = mean(obs_sueter)) |>
-  mutate(ee = sqrt(prop_sueter * (1 - prop_sueter) / n)) |> 
-ggplot(aes(x = pred_sueter, y = prop_sueter, ymin = prop_sueter - 2*ee,
-           ymax = prop_sueter + 2* ee)) +
+      pred_camisa = mean(camisa), 
+      prop_camisa = mean(obs_camisa)) |>
+  mutate(ee = sqrt(prop_camisa * (1 - prop_camisa) / n)) |> 
+ggplot(aes(x = pred_camisa, y = prop_camisa, ymin = prop_camisa - 2*ee,
+           ymax = prop_camisa + 2* ee)) +
   geom_abline() +
   geom_linerange() + 
-  geom_point(colour = "red") 
+  geom_point(colour = "red") + xlim(0,1) + ylim(0,1)
 ```
 
-Vemos que la calibración es razonable, al menos para la categoría de suéteres. Podemos
+Vemos que la calibración no es muy mala, al menos para la categoría de *camisa*ß. Podemos
 checar otras categorías de esta manera. Calibrar estas probabilidades puede ser más difícil,
 pero podemos construir regiones conformes con garantías de cobertura como mostramos abajo:
 
