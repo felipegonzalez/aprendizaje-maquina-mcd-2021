@@ -1,0 +1,269 @@
+---
+title: "Tarea 6: clasificación binaria"
+output: html_notebook
+---
+
+En este problema evaluamos un clasificador para predecir qué clientes
+comprararán un seguro para caravanas (*casas móviles* o *campers*). Tenemos 
+cierta información
+socioeconómica de los clientes, así como información acerca de sus compras
+y conducta. Este problema es interesante también porque presenta
+desbalance considerable entre la clase de compra y la de no compra: la mayoría 
+de los clientes no está interesado en este tipo de seguro.
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+```
+
+Consideremos los siguientes datos (del paquete @ISLR):
+
+The data contains 5822 real customer records. Each record consists of 86 variables, containing sociodemographic data (variables 1-43) and product ownership (variables 44-86). The sociodemographic data is derived from zip codes. All customers living in areas with the same zip code have the same sociodemographic attributes. Variable 86 (Purchase) indicates whether the customer purchased a caravan insurance policy. Further information on the individual variables can be obtained at http://www.liacs.nl/~putten/library/cc2000/data.html
+
+Aquí puedes ver un resumen de las variables, **aunque por el momento no nos preocupamos
+mucho por esto**:
+
+Todas las variables son numéricas, excepto MOSTYPE, MOSHOOFD
+
+### Variables sociodemográficas y de segmentación (por cliente)
+
+MOSTYPE: Customer Subtype; see L0 MAANTHUI: Number of houses 1 - 10 MGEMOMV: Avg size household 1 - 6 MGEMLEEF: Avg age; see L1 MOSHOOFD: Customer main type; see L2
+
+### Variables sociedemográficas (ligadas a código postal)
+
+MGODRK: Roman catholic MGODPR: Protestant … MGODOV: Other religion MGODGE: No religion MRELGE: Married MRELSA: Living together MRELOV: Other relation MFALLEEN: Singles MFGEKIND: Household without children MFWEKIND: Household with children MOPLHOOG: High level education MOPLMIDD: Medium level education MOPLLAAG: Lower level education MBERHOOG: High status MBERZELF: Entrepreneur MBERBOER: Farmer MBERMIDD: Middle management MBERARBG: Skilled labourers MBERARBO: Unskilled labourers MSKA: Social class A MSKB1: Social class B1 MSKB2: Social class B2 MSKC: Social class C MSKD: Social class D MHHUUR: Rented house MHKOOP: Home owners MAUT1: 1 car MAUT2: 2 cars MAUT0: No car MZFONDS: National Health Service MZPART: Private health insurance MINKM30: Income < 30.000 MINK3045: Income 30-45.000 MINK4575: Income 45-75.000 MINK7512: Income 75-122.000 MINK123M: Income >123.000 MINKGEM: Average income MKOOPKLA: Purchasing power class
+
+### Variables de compra de productos (ligadas al cliente)
+
+PWAPART: Contribution private third party insurance PWABEDR: Contribution third party insurance (firms) … PWALAND: Contribution third party insurane (agriculture) PPERSAUT: Contribution car policies PBESAUT: Contribution delivery van policies PMOTSCO: Contribution motorcycle/scooter policies PVRAAUT: Contribution lorry policies PAANHANG: Contribution trailer policies PTRACTOR: Contribution tractor policies PWERKT: Contribution agricultural machines policies PBROM: Contribution moped policies PLEVEN: Contribution life insurances PPERSONG: Contribution private accident insurance policies PGEZONG: Contribution family accidents insurance policies PWAOREG: Contribution disability insurance policies PBRAND: Contribution fire policies PZEILPL: Contribution surfboard policies PPLEZIER: Contribution boat policies PFIETS: Contribution bicycle policies PINBOED: Contribution property insurance policies PBYSTAND: Contribution social security insurance policies AWAPART: Number of private third party insurance 1 - 12 AWABEDR: Number of third party insurance (firms) … AWALAND: Number of third party insurance (agriculture) APERSAUT: Number of car policies ABESAUT: Number of delivery van policies AMOTSCO: Number of motorcycle/scooter policies AVRAAUT: Number of lorry policies AAANHANG: Number of trailer policies ATRACTOR: Number of tractor policies AWERKT: Number of agricultural machines policies ABROM: Number of moped policies ALEVEN: Number of life insurances APERSONG: Number of private accident insurance policies AGEZONG: Number of family accidents insurance policies AWAOREG: Number of disability insurance policies ABRAND: Number of fire policies AZEILPL: Number of surfboard policies APLEZIER: Number of boat policies AFIETS: Number of bicycle policies AINBOED: Number of property insurance policies ABYSTAND: Number of social security insurance policies 
+
+#### Variable respuesta
+
+CARAVAN: Number of mobile home policies 0 - 1
+
+#### Explicaciones de tipo de cliente
+
+L0: Customer subtype
+
+1: High Income, expensive child 2: Very Important Provincials 3: High status seniors 4: Affluent senior apartments 5: Mixed seniors 6: Career and childcare 7: Dinki's (double income no kids) 8: Middle class families 9: Modern, complete families 10: Stable family 11: Family starters 12: Affluent young families 13: Young all american family 14: Junior cosmopolitan 15: Senior cosmopolitans 16: Students in apartments 17: Fresh masters in the city 18: Single youth 19: Suburban youth 20: Etnically diverse 21: Young urban have-nots 22: Mixed apartment dwellers 23: Young and rising 24: Young, low educated 25: Young seniors in the city 26: Own home elderly 27: Seniors in apartments 28: Residential elderly 29: Porchless seniors: no front yard 30: Religious elderly singles 31: Low income catholics 32: Mixed seniors 33: Lower class large families 34: Large family, employed child 35: Village families 36: Couples with teens 'Married with children' 37: Mixed small town dwellers 38: Traditional families 39: Large religous families 40: Large family farms 41: Mixed rurals
+
+L2: customer main type keys:
+
+1: Successful hedonists 2: Driven Growers 3: Average Family 4: Career Loners 5: Living well 6: Cruising Seniors 7: Retired and Religeous 8: Family with grown ups 9: Conservative families 10: Farmers
+
+### Lectura, partición y exploración de datos
+
+Queremos predecir la variable *Purchase*, que indica si el cliente compró o no
+el seguro de camper. La separación la hacemos de forma que tengamos misma
+proporción de compras en cada conjunto:
+
+```{r, message = FALSE}
+caravan <- read_csv("./datos/caravan.csv", show_col_types = FALSE) |> 
+  mutate(MOSTYPE = factor(MOSTYPE),
+         MOSHOOFD = factor(MOSHOOFD))
+set.seed(823)
+# usamos muestreo estratificado para tener el mismo balance
+# de Purchase en entrenamiento y prueba
+caravan_split = initial_split(caravan, strata = Purchase, prop = 0.7)
+caravan_split
+caravan_ent <- training(caravan_split)
+```
+
+Y vemos el desbalance de clases:
+
+```{r}
+nrow(caravan_ent)
+caravan_ent |> count(Purchase) |> 
+  mutate(pct = 100 * n / sum(n)) |> 
+  mutate(pct = round(pct, 2))
+```
+
+Esta es la distribución natural de respuesta que vemos en los datos, y tenemos relativamente pocos
+datos en la categoría "Yes".
+
+**Pregunta 1**: ¿Crees que una tasa de predicción de clase correcta (Si o No compra) de 
+alrededor de 92% sería buena para este problema? ¿Qué tasa de correctos tendrías si tu predicción es la predicción trivial "No compra"?
+
+### Regresión logística regularizada
+
+Usaremos regresión logística regularizada
+
+```{r}
+# preparacion de datos
+caravan_receta <- recipe(Purchase ~ . , caravan_ent) |>
+  # convertir a dummy variables nominales, esto lo explicamos
+  # con detalle más adelante
+  step_dummy(all_nominal(), -Purchase) |>
+  step_relevel(Purchase,  ref_level = "Yes", skip = TRUE) 
+
+modelo_logistico <- 
+  logistic_reg(mixture = tune(), penalty = tune()) |> 
+  set_args(lambda.min_ratio = 1e-18) |> 
+  set_engine("glmnet")  
+flujo_caravan <- workflow() |> 
+  add_recipe(caravan_receta) |> 
+  add_model(modelo_logistico)
+```
+
+```{r}
+# configurar partición
+val_split <- manual_rset(caravan_split |> list(), "validación")
+# hacemos un grid de valores de mezcla y penalización
+params <- parameters(penalty(range = c(-5, 2), trans = log10_trans()),
+                            mixture(range = c(0, 1)))
+grid <- grid_regular(params, levels = c(penalty = 20, mixture = 5))
+```
+Y ahora ajustamos todos los modelos. Evaluamos con la pérdida logarítmica: 
+
+```{r}
+mis_metricas <- metric_set(mn_log_loss)
+eval_tbl <- tune_grid(flujo_caravan,
+                      resamples = val_split,
+                      grid = grid,
+                      metrics = mis_metricas) 
+ajustes_tbl <- eval_tbl |>
+  unnest(cols = c(.metrics)) |> 
+  select(id, mixture, penalty, .metric, .estimate)
+ajustes_tbl
+```
+
+```{r}
+ggplot(ajustes_tbl, aes(x = penalty, y = .estimate, colour = mixture, group = mixture)) +
+  geom_point() + geom_line() + scale_x_log10()
+```
+
+**Pregunta 2**: ¿qué rango de valores da mejores resultados para este problema?
+
+Finalmente, seleccionamos el mejor modelo:
+
+```{r}
+mejor_modelo <- select_best(eval_tbl)
+mejor_modelo
+```
+```{r}
+modelo_final <- finalize_workflow(flujo_caravan, mejor_modelo) |> 
+  fit(caravan_ent)
+```
+
+### Análisis de las probabilidades de compra
+
+```{r}
+caravan_prueba <- testing(caravan_split)
+pred_probas <- predict(modelo_final, caravan_prueba, type="prob") 
+head(pred_probas)
+```
+
+
+```{r}
+pred_probas <- pred_probas |> 
+  bind_cols(caravan_prueba)
+```
+
+```{r}
+ggplot(pred_probas, aes(x = .pred_Yes)) + geom_histogram()
+```
+
+**Pregunta 3**: ¿Qué pasaría con estos datos si pones un punto de corte de probabilidad
+0.5 para clasificar a alguien como candidato a comprar un seguro de casa móvil? Por ejemplo,
+si queremos clasificar a la clase de máxima probabilidad hacemos:
+
+```{r}
+clase_probas_0.5 <- predict(modelo_final, caravan_prueba) 
+```
+
+¿Cuántos candidatos a comprar obtendrías? ¿Tiene sentido que con estos datos
+encuentres probabilidades muy grandes de que alguien compre este seguro?
+
+#### Probando puntos de corte {-}
+
+Podemos por ejemplo considerar como candidatos a aquellos clientes que
+tengan probabilidad mayor a 0.10 de ser compradores del seguro:
+
+```{r}
+pred_probas <- pred_probas |> 
+  mutate(tipo = ifelse(.pred_Yes > 0.10, "candidato", "no_candidato"))
+```
+
+Ahora en la muestra de prueba podemos cruzar nuestra clasificación con el
+verdadero valor:
+
+```{r}
+tabla_confusion <- pred_probas |>  group_by(tipo, Purchase) |> 
+  count()
+tabla_confusion |> pivot_wider(names_from = Purchase, values_from = n)
+```
+
+**Pregunta 4**: ¿cuántos candidatos encontraste? ¿Qué porcentaje de la muestra total
+representa este número? ¿Entre estos que candidatos encontraste, qué porcentaje 
+realmente es comprador
+de este seguro? (este último número se llama *precisión*).
+
+Si escoges al azar el mismo número de candidatos, ¿qué porcentaje de compradores
+esperas encontrar en este grupo escogido al azar? Compara esto con lo que obtuviste
+usando el modelo. ¿Qué tan superior es tu modelo en escoger comparado con escoger
+clientes al azar para intentar
+venderles el seguro?
+
+**Pregunta 5**: De todos los compradores verdaderos en la muestra de prueba, qué porcentaje
+clasificaste como candidatos? (Este número se llama *cobertura, sensibilidad* o *recall*).
+¿Qué porcentaje se te "escapó"? ¿Qué significa este número en términos de, por ejemplo,
+una campaña de ventas centrada en los candidatos que produjimos con el modelo?
+
+
+#### Probando otros punto de corte {-}
+
+Arriba cortamos en 0.10, pero para nuestro problema puede ser qué otro punto 
+de corte sea mejor.
+
+**Pregunta 6** ¿Si subimos el punto de corte (somos más exigentes), qué esperaríamos que pasara
+con número de clasificados como candidatos, cobertura y precisión? ¿Qué pasa si bajamos el punto de corte?
+
+Puedes probar distintos punto de corte y presentarlos en la siguiente gráfica (pero hay muchas
+otras que veremos en clase). En este caso, ordenamos los datos de mayor probabilidad
+a menor. Esto quiere decir que el primer candidato que escogeríamos es el de mayor probabilidad.
+Ahora vamos bajando en la tabla, y tomamos como candidatos a todos los que estén por
+arriba de cada renglón. Calculamos la cobertura (de todos los positivos qué porcentaje hemos
+caputrado)
+
+```{r}
+curva_ganancia <- gain_curve(pred_probas, truth = factor(Purchase), .pred_Yes, 
+                           event_level = "second") 
+curva_ganancia
+```
+
+
+```{r}
+ggplot(curva_ganancia,
+       aes(x = .n, y = .percent_found)) +
+  geom_path() + 
+  xlab("Número de clientes \"candidatos\"") +
+  ylab("Cobertura")
+```
+
+**Pregunta 7**: (más difícil) En esta cruva, ¿qué puntos corresponden a puntos de corte de probabilidad
+más alta y más baja? Si quisieras capturar al 60% de los verdaderos compradores,
+¿cuántos candidatos tienes que tomar? ¿Qué punto de corte de probablidad se puede usar?
+Puedes usar la siguiente tabla para contestar la segunda pregunta:
+
+```{r}
+total_compradores <- pred_probas |> summarise(total_compradores = sum(Purchase == "Yes")) |> 
+  pull(total_compradores)
+pred_probas |> select(.pred_Yes, Purchase) |> 
+  arrange(desc(.pred_Yes)) |> 
+  mutate(num_compradores = cumsum(Purchase == "Yes")) |> 
+  mutate(cobertura =  num_compradores / total_compradores ) 
+```
+**Pregunta 8** (opcional) Piensa en qué circunstancias de toma de decisiones
+este tipo de curva es buen insumo que explica el desempeño del modelo, y cómo debe utilizarse
+para tomar esas decisiones.
+
+
+**Pregunta 8** (opcional) Repite esta curva con un modelo donde incluyas
+solo una cuantas variables, por ejemplo MFWEKIND: Household with children y
+MINKGEM: Average income. Explica
+cómo se ven las dos curvas de ganancia, y cómo determinar qué modelo es mejor con
+estas curvas.
+
+
+
