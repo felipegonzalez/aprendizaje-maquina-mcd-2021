@@ -134,14 +134,15 @@ es muy informativo el *accuracy* (porcentaje de clasificación correcta)?
 Ahora construimos curvas ROC para comparar los modelos
 
 ```{r}
+caravan_prueba <- testing(caravan_split)
 ajuste_1 <- extract_workflow(resultados, "receta_base_reg_logistica") |> 
   fit(caravan_ent)
-preds_logistica <- predict(ajuste_1, testing(caravan_split), type = "prob")
+preds_logistica <- predict(ajuste_1, caravan_prueba, type = "prob")
 ajuste_2 <- extract_workflow(resultados, "receta_norm_k_vecinos") |> 
   fit(caravan_ent)
-preds_logistica <- predict(ajuste_1, testing(caravan_split), type = "prob") |> 
+preds_logistica <- predict(ajuste_1, caravan_prueba, type = "prob") |> 
   mutate(modelo = "reg_logistica") |> bind_cols(caravan_prueba |> select(Purchase))
-preds_kvmc <- predict(ajuste_2, testing(caravan_split), type = "prob") |> 
+preds_kvmc <- predict(ajuste_2, caravan_prueba, type = "prob") |> 
   mutate(modelo = "kvmc") |> bind_cols(caravan_prueba |> select(Purchase))
 preds_modelos <- bind_rows(preds_logistica, preds_kvmc)
 ```
@@ -179,7 +180,8 @@ dat_calibracion
 ggplot(dat_calibracion, aes(x = proba_pred, y = prop_obs, 
                             ymax = prop_obs + 2 * ee, ymin = prop_obs - 2 * ee)) +
   geom_point() + geom_linerange() +
-  geom_abline() + coord_equal() + geom_rug(data = preds_logistica, aes(x = .pred_Yes))
+  geom_abline() + coord_equal() + 
+  geom_rug(data = preds_logistica, aes(x = .pred_Yes), inherit.aes = FALSE)
 ```
 
 **Pregunta 4**:  discute la gráfica de calibración que produjiste. ¿Qué tan bien
