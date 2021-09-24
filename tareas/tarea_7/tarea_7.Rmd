@@ -1,0 +1,190 @@
+---
+title: "Tarea 7: clasificación binaria: calibración y evaluación"
+output: html_notebook
+---
+
+En esta tarea continuamos el modelo que construimos en la tarea anterior (6).
+
+En este problema evaluamos un clasificador para predecir qué clientes
+comprararán un seguro para caravanas (*casas móviles* o *campers*). Tenemos 
+cierta información
+socioeconómica de los clientes, así como información acerca de sus compras
+y conducta. Este problema es interesante también porque presenta
+desbalance considerable entre la clase de compra y la de no compra: la mayoría 
+de los clientes no está interesado en este tipo de seguro.
+
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+```
+
+Consideremos los siguientes datos (del paquete @ISLR):
+
+The data contains 5822 real customer records. Each record consists of 86 variables, containing sociodemographic data (variables 1-43) and product ownership (variables 44-86). The sociodemographic data is derived from zip codes. All customers living in areas with the same zip code have the same sociodemographic attributes. Variable 86 (Purchase) indicates whether the customer purchased a caravan insurance policy. Further information on the individual variables can be obtained at http://www.liacs.nl/~putten/library/cc2000/data.html
+
+Aquí puedes ver un resumen de las variables, **aunque por el momento no nos preocupamos
+mucho por esto**:
+
+Todas las variables son numéricas, excepto MOSTYPE, MOSHOOFD
+
+### Variables sociodemográficas y de segmentación (por cliente)
+
+MOSTYPE: Customer Subtype; see L0 MAANTHUI: Number of houses 1 - 10 MGEMOMV: Avg size household 1 - 6 MGEMLEEF: Avg age; see L1 MOSHOOFD: Customer main type; see L2
+
+### Variables sociedemográficas (ligadas a código postal)
+
+MGODRK: Roman catholic MGODPR: Protestant … MGODOV: Other religion MGODGE: No religion MRELGE: Married MRELSA: Living together MRELOV: Other relation MFALLEEN: Singles MFGEKIND: Household without children MFWEKIND: Household with children MOPLHOOG: High level education MOPLMIDD: Medium level education MOPLLAAG: Lower level education MBERHOOG: High status MBERZELF: Entrepreneur MBERBOER: Farmer MBERMIDD: Middle management MBERARBG: Skilled labourers MBERARBO: Unskilled labourers MSKA: Social class A MSKB1: Social class B1 MSKB2: Social class B2 MSKC: Social class C MSKD: Social class D MHHUUR: Rented house MHKOOP: Home owners MAUT1: 1 car MAUT2: 2 cars MAUT0: No car MZFONDS: National Health Service MZPART: Private health insurance MINKM30: Income < 30.000 MINK3045: Income 30-45.000 MINK4575: Income 45-75.000 MINK7512: Income 75-122.000 MINK123M: Income >123.000 MINKGEM: Average income MKOOPKLA: Purchasing power class
+
+### Variables de compra de productos (ligadas al cliente)
+
+PWAPART: Contribution private third party insurance PWABEDR: Contribution third party insurance (firms) … PWALAND: Contribution third party insurane (agriculture) PPERSAUT: Contribution car policies PBESAUT: Contribution delivery van policies PMOTSCO: Contribution motorcycle/scooter policies PVRAAUT: Contribution lorry policies PAANHANG: Contribution trailer policies PTRACTOR: Contribution tractor policies PWERKT: Contribution agricultural machines policies PBROM: Contribution moped policies PLEVEN: Contribution life insurances PPERSONG: Contribution private accident insurance policies PGEZONG: Contribution family accidents insurance policies PWAOREG: Contribution disability insurance policies PBRAND: Contribution fire policies PZEILPL: Contribution surfboard policies PPLEZIER: Contribution boat policies PFIETS: Contribution bicycle policies PINBOED: Contribution property insurance policies PBYSTAND: Contribution social security insurance policies AWAPART: Number of private third party insurance 1 - 12 AWABEDR: Number of third party insurance (firms) … AWALAND: Number of third party insurance (agriculture) APERSAUT: Number of car policies ABESAUT: Number of delivery van policies AMOTSCO: Number of motorcycle/scooter policies AVRAAUT: Number of lorry policies AAANHANG: Number of trailer policies ATRACTOR: Number of tractor policies AWERKT: Number of agricultural machines policies ABROM: Number of moped policies ALEVEN: Number of life insurances APERSONG: Number of private accident insurance policies AGEZONG: Number of family accidents insurance policies AWAOREG: Number of disability insurance policies ABRAND: Number of fire policies AZEILPL: Number of surfboard policies APLEZIER: Number of boat policies AFIETS: Number of bicycle policies AINBOED: Number of property insurance policies ABYSTAND: Number of social security insurance policies 
+
+#### Variable respuesta
+
+CARAVAN: Number of mobile home policies 0 - 1
+
+#### Explicaciones de tipo de cliente
+
+L0: Customer subtype
+
+1: High Income, expensive child 2: Very Important Provincials 3: High status seniors 4: Affluent senior apartments 5: Mixed seniors 6: Career and childcare 7: Dinki's (double income no kids) 8: Middle class families 9: Modern, complete families 10: Stable family 11: Family starters 12: Affluent young families 13: Young all american family 14: Junior cosmopolitan 15: Senior cosmopolitans 16: Students in apartments 17: Fresh masters in the city 18: Single youth 19: Suburban youth 20: Etnically diverse 21: Young urban have-nots 22: Mixed apartment dwellers 23: Young and rising 24: Young, low educated 25: Young seniors in the city 26: Own home elderly 27: Seniors in apartments 28: Residential elderly 29: Porchless seniors: no front yard 30: Religious elderly singles 31: Low income catholics 32: Mixed seniors 33: Lower class large families 34: Large family, employed child 35: Village families 36: Couples with teens 'Married with children' 37: Mixed small town dwellers 38: Traditional families 39: Large religous families 40: Large family farms 41: Mixed rurals
+
+L2: customer main type keys:
+
+1: Successful hedonists 2: Driven Growers 3: Average Family 4: Career Loners 5: Living well 6: Cruising Seniors 7: Retired and Religeous 8: Family with grown ups 9: Conservative families 10: Farmers
+
+### Lectura, partición y exploración de datos
+
+Queremos predecir la variable *Purchase*, que indica si el cliente compró o no
+el seguro de camper. La separación la hacemos de forma que tengamos misma
+proporción de compras en cada conjunto:
+
+```{r, message = FALSE}
+caravan <- read_csv("./datos/caravan.csv", show_col_types = FALSE) |> 
+  mutate(MOSTYPE = factor(MOSTYPE),
+         MOSHOOFD = factor(MOSHOOFD))
+set.seed(823)
+# usamos muestreo estratificado para tener el mismo balance
+# de Purchase en entrenamiento y prueba
+caravan_split = initial_split(caravan, strata = Purchase, prop = 0.7)
+caravan_split
+caravan_ent <- training(caravan_split)
+```
+
+Y vemos el desbalance de clases:
+
+```{r}
+nrow(caravan_ent)
+caravan_ent |> count(Purchase) |> 
+  mutate(pct = 100 * n / sum(n)) |> 
+  mutate(pct = round(pct, 2))
+```
+
+
+
+### Regresión logística regularizada y vecinos más cercanos
+
+Usaremos regresión logística regularizaday vecinos más cercanos. **Puedes revisar la tarea para ver cómo 
+escogimos los parámetros penalty y mixture**.
+
+```{r}
+# preparacion de datos
+caravan_receta <- recipe(Purchase ~ . , caravan_ent) |>
+  step_dummy(all_nominal(), -Purchase) |>
+  step_relevel(Purchase,  ref_level = "Yes", skip = TRUE) 
+caravan_receta_norm <- caravan_receta |> 
+  step_normalize(all_numeric_predictors())
+# modelos
+modelo_logistico <- 
+  logistic_reg(mixture = 0.5, penalty = 0.01) |> 
+  set_args(lambda.min_ratio = 1e-18) |> 
+  set_engine("glmnet") |> 
+  set_mode("classification")
+modelo_kvmc <- nearest_neighbor(neighbors = 20) |> 
+  set_mode("classification")
+```
+
+```{r}
+conjunto_wfs <- workflow_set(
+  preproc = list(receta_base = caravan_receta, 
+                 receta_norm = caravan_receta_norm),
+  models = list(reg_logistica = modelo_logistico, k_vecinos = modelo_kvmc),
+  cross = FALSE
+)
+```
+
+
+```{r}
+val_split <- manual_rset(caravan_split |> list(), "validación")
+mis_metricas <- metric_set(mn_log_loss, accuracy)
+resultados <- conjunto_wfs |> 
+  workflow_map("fit_resamples", resamples = val_split, 
+               metrics = mis_metricas)
+resultados |> select(wflow_id, result) |> 
+  unnest(result) |> unnest(.metrics)
+```
+
+**Pregunta 1**: ¿Cuál modelo creees que es mejor con esta información? ¿Por qué no
+es muy informativo el *accuracy* (porcentaje de clasificación correcta)?
+
+
+### Curvas ROC
+
+Ahora construimos curvas ROC para comparar los modelos
+
+```{r}
+ajuste_1 <- extract_workflow(resultados, "receta_base_reg_logistica") |> 
+  fit(caravan_ent)
+preds_logistica <- predict(ajuste_1, testing(caravan_split), type = "prob")
+ajuste_2 <- extract_workflow(resultados, "receta_norm_k_vecinos") |> 
+  fit(caravan_ent)
+preds_logistica <- predict(ajuste_1, testing(caravan_split), type = "prob") |> 
+  mutate(modelo = "reg_logistica") |> bind_cols(caravan_prueba |> select(Purchase))
+preds_kvmc <- predict(ajuste_2, testing(caravan_split), type = "prob") |> 
+  mutate(modelo = "kvmc") |> bind_cols(caravan_prueba |> select(Purchase))
+preds_modelos <- bind_rows(preds_logistica, preds_kvmc)
+```
+
+```{r}
+roc_graf <- roc_curve(preds_modelos |> group_by(modelo), truth = factor(Purchase), .pred_Yes,
+                      event_level = "second")
+autoplot(roc_graf)
+```
+
+
+**Pregunta 2**: qué tan diferentes son estos modelos en desempeño en sensibilidad
+y especificidad? Por ejemplo, si buscas sensibilidad de 75%, qué valor de especificidad
+puedes alcanzar con cada uno de ellos?
+
+**Pregunta 3**: Calcula la medida AUC de prueba para los dos modelos. (Área bajo la curva ROC).
+
+### Calibración de probabilidades
+
+Ahora checamos la calibración de probabilidades para el modelo de regresión logística.
+
+```{r}
+dat_calibracion <- preds_logistica |> 
+  mutate(grupo_pred = cut_number(.pred_Yes, n = 10)) |> 
+  group_by(grupo_pred) |> 
+  summarise(prop_obs = mean(Purchase == "Yes"), 
+            proba_pred = mean(.pred_Yes),
+            n = n()) |> 
+  mutate(ee = sqrt(prop_obs*(1 - prop_obs)/n))
+dat_calibracion
+```
+
+
+```{r}
+ggplot(dat_calibracion, aes(x = proba_pred, y = prop_obs, 
+                            ymax = prop_obs + 2 * ee, ymin = prop_obs - 2 * ee)) +
+  geom_point() + geom_linerange() +
+  geom_abline() + coord_equal() + geom_rug(data = preds_logistica, aes(x = .pred_Yes))
+```
+
+**Pregunta 4**:  discute la gráfica de calibración que produjiste. ¿Qué tan bien
+reflejan las predicciones la probabilidad de ocurrencia del evento de compra (Purchase)?
+
+**Pregunta 5**: (más difícil, opcional ) considera los anchos de las cubetas de probablidades que construimos
+en la gráfica de arriba. ¿Que defecto tienen las cubetas de probabilidades más altas en la construcción
+de la gráfica de calibración?
