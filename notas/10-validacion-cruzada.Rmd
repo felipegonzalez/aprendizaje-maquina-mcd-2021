@@ -2,7 +2,7 @@
 
 ```{r, include = FALSE}
 ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
-knitr::opts_chunk$set(fig.width=4, fig.height=3) 
+knitr::opts_chunk$set(fig.width=6, fig.height=4) 
 cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 scale_colour_discrete <- function(...) {
   ggplot2::scale_colour_manual(..., values = cbb_palette)
@@ -117,7 +117,7 @@ $k=N$, hay que entrenar un modelo para cada dato de entrada).
 Consideremos nuestro problema de predicción de grasa corporal.
 Definimos el flujo de procesamiento, e indicamos qué parametros queremos afinar:
 
-```{r, messages = FALSE}
+```{r, messages = FALSE, warning = FALSE, include = FALSE}
 library(tidyverse)
 library(tidymodels)
 dat_grasa <- read_csv(file = '../datos/bodyfat.csv') 
