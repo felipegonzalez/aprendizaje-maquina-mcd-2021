@@ -15,7 +15,7 @@ típicos de que requieren de resolver un problema de clasificación son:
 - Para una búsqueda dada de restaurantes, decidir qué restaurantes debemos poner en las primeras posiciones de los resultados de la búsqueda.
 - Decidir si una imagen contiene una persona o no, con el fin de activar una alarma en ciertas condiciones.
 
-En la mayoría de estos ejemplos, *no queremos encontrar un clasificador si un cliente va abandonar o no, tiene una enferdad o no o si un segmento de imagen contiene una persona o no, etc*. Esto solo aplica
+En la mayoría de estos ejemplos, *no queremos encontrar un clasificador si un cliente va abandonar o no, tiene una enfermedad o no o si un segmento de imagen contiene una persona o no, etc*. Esto solo aplica
 para problemas con tasas de ruido muy bajas donde podemos separar claramente las clases - lo cual no es tan común, especialmente en problemas de negocios, por ejemplo.
 
 Igual que en regresión producir **intervalos de predicción** (en problemas que no son de ruido bajo) permiten tomar mejores decisiones *downstream* del modelo, en clasificación producir **probabilidades de clase** permite tomar mejores decisiones que toman en cuenta aspectos del problema particular que nos interesa.
