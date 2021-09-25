@@ -62,7 +62,7 @@ que sea más del 25%, por ejemplo. **En caso de usar muestras relativamente chic
 o prueba, es necesario estimar el error de estimación del desempeño**.
 
 
-### Validación cruzada
+## Validación cruzada
 
 En muchos casos, no queremos apartar una muestra de validación para seleccionar modelos,
 pues no tenemos muchos datos (al dividir la muestra obtendríamos
@@ -112,7 +112,7 @@ parte, cuando $k$ es grande el método puede ser muy costoso (por ejemplo, si
 $k=N$, hay que entrenar un modelo para cada dato de entrada).
 
 
-### Ejemplo {-}
+## Ejemplo
 
 Consideremos nuestro problema de predicción de grasa corporal.
 Definimos el flujo de procesamiento, e indicamos qué parametros queremos afinar:
@@ -271,7 +271,7 @@ ggplot(aes(x = estatura, y = peso, colour = factor(error_grande))) +
 Lo que explica el tamaño del error para este caso.
 
 
-### ¿Cómo se desempeña validación cruzada como estimación del error?
+## ¿Cómo se desempeña validación cruzada como estimación del error?
 
 Podemos comparar el desempeño estimado con validación cruzada con el de
 muestra de prueba: Consideremos nuestro ejemplo simulado de regresión logística. Repetiremos
