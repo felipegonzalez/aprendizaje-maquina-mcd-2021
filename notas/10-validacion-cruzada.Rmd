@@ -43,6 +43,23 @@ ponder en riesgo la estimación final del error del modelo seleccionado? )
 Pudes ver el ejemplo anterior donde usamos esta estrategia para evaluar
 distintos valores de $\lambda$.
 
+```{block2, type='comentario'}
+-No hay una regla general para decidir el tamaño del **conjunto de entrenamiento**. Generalmente
+conjuntos de datos más grandes y seleccionados apropiadamente dan mejores resultados.
+- En cuanto a validación y prueba, requerimos que sean de tamaño suficiente para tener
+una estimación razonable del error y del desempeño predictivo general de nuestros
+modelos (en el proceso de selección, con el conjunto de validación, y en la evaluación final,
+con el conjunto de prueba). Esta es una pregunta de *inferencia*: ¿de qué tamaño y bajo
+que diseño debe ser
+extraida la muestra de validación y prueba?
+```
+
+Para decidir de antemano los tamaños de validación y prueba, tenemos que tener una idea
+de qué tanto varía el error de caso a caso (la varianza), si queremos hacer estimaciones
+en subgrupos de datos (que requerirán tamaño de muestra suficiente también), y cuánto
+es aceptable como error de estimación del desempeño predictivo, que generalmente no queremos
+que sea más del 25%, por ejemplo. **En caso de usar muestras relativamente chicas de validación
+o prueba, es necesario estimar el error de estimación del desempeño**.
 
 
 ### Validación cruzada
@@ -52,7 +69,7 @@ pues no tenemos muchos datos (al dividir la muestra obtendríamos
 un modelo relativamente malo en relación al que resulta de todos los datos).
 
 Un criterio para seleccionar la regularización adecuada
-es el de **validación cruzada*, que es un método computacional
+es el de **validación cruzada**, que es un método computacional
 para producir una estimación interna (usando sólo muestra de entrenamiento)
 del error de predicción.
 
@@ -341,7 +358,7 @@ modelos tenemos lo siguiente:
 
 ```{r}
 set.seed(8559)
-datos <- sim_datos(n = 4000, beta = beta[1:40, ])
+datos <- sim_datos(n = 4000, beta = a[1:40, ])
 modelo <- linear_reg(mixture = 0, penalty = tune()) %>% 
   set_engine("glmnet") 
 flujo <- workflow() %>% 
