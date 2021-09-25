@@ -144,8 +144,8 @@ grasa_receta <- recipe(grasacorp ~ ., grasa_ent) |>
 # con tune() indicamos que ese parámetro será afinado
 modelo_regularizado <-  linear_reg(mixture = 0, penalty = tune()) |> 
   set_engine("glmnet", lambda.min.ratio = 1e-20) 
-flujo_reg <- workflow() %>% 
-  add_model(modelo_regularizado) %>% 
+flujo_reg <- workflow() |> 
+  add_model(modelo_regularizado) |> 
   add_recipe(grasa_receta)
 ```
 
@@ -174,18 +174,18 @@ metricas_vc <- tune_grid(flujo_reg,
   resamples = validacion_particion,
   grid = bf_grid,
   metrics = metric_set(rmse, mae)) 
-metricas_vc %>% unnest(.metrics)
+metricas_vc |> unnest(.metrics)
 ```
 Vemos que esta función da un valor del error para cada vuelta de validación
 cruzada, y cada valor de lambda que pusimos en el grid:
 
 ```{r}
-metricas_vc %>% unnest(.metrics) %>%  group_by(id, .metric) %>% count()
+metricas_vc |> unnest(.metrics) |>  group_by(id, .metric) |> count()
 ```
 Y ahora podemos graficar:
 
 ```{r}
-ggplot(metricas_vc %>% unnest(.metrics) %>% filter(.metric == "rmse"), 
+ggplot(metricas_vc |> unnest(.metrics) |> filter(.metric == "rmse"), 
        aes(x = penalty, y = .estimate)) + geom_point() +
   scale_x_log10()
 ```
@@ -195,13 +195,13 @@ Nótese que para valores bajos de penalización hay variación considerable en e
 podemos resumir con media y error estándar:
 
 ```{r}
-metricas_resumen <- metricas_vc %>% 
+metricas_resumen <- metricas_vc |> 
   collect_metrics()
 metricas_resumen
 ```
 
 ```{r}
-g_1 <- ggplot(metricas_resumen %>% filter(.metric == "rmse"), 
+g_1 <- ggplot(metricas_resumen |> filter(.metric == "rmse"), 
        aes(x = penalty, y = mean, ymin = mean - std_err, ymax = mean + std_err)) +
   geom_linerange() +
   geom_point(colour = "red") +
@@ -220,9 +220,9 @@ del mínimo.*
 Podemos obtener estos resultados de esta forma:
 
 ```{r}
-metricas_vc %>% show_best(metric = "rmse")
-minimo <- metricas_vc %>% select_best(metric = "rmse")
-minimo_ee <- metricas_vc %>% select_by_one_std_err(metric = "rmse", desc(penalty))
+metricas_vc |> show_best(metric = "rmse")
+minimo <- metricas_vc |> select_best(metric = "rmse")
+minimo_ee <- metricas_vc |> select_by_one_std_err(metric = "rmse", desc(penalty))
 ```
 
 
@@ -282,19 +282,19 @@ varias veces el ajuste y compararemos el error de prueba con el estimado por val
 set.seed(28015)
 a_vec <- rnorm(100, 0, 0.2)
 a <- tibble(term = paste0('V', 1:length(a_vec)), valor = a_vec)
-modelo_1 <- linear_reg(penalty = 0.01) %>% 
+modelo_1 <- linear_reg(penalty = 0.01) |> 
     set_engine("glmnet", lambda.min.ratio = 1e-20) 
-flujo_1 <- workflow() %>% 
-    add_model(modelo_1) %>% 
+flujo_1 <- workflow() |> 
+    add_model(modelo_1) |> 
     add_formula(y ~ .)
 sim_datos <- function(n, beta){
   p <- nrow(beta)
   mat_x <- matrix(rnorm(n * p, 0, 0.5), n, p) + rnorm(n) 
-  colnames(mat_x) <- beta %>% pull(term)
-  beta_vec <- beta %>% pull(valor)
+  colnames(mat_x) <- beta |> pull(term)
+  beta_vec <- beta |> pull(valor)
   f_x <- (mat_x %*% beta_vec) 
   y <- as.numeric(f_x) + rnorm(n, 0, 1)
-  datos <- as_tibble(mat_x) %>% 
+  datos <- as_tibble(mat_x) |> 
     mutate(y = y) 
   datos
 }
@@ -306,38 +306,38 @@ simular_evals <- function(rep, flujo, beta){
 
   # evaluar con muestra de prueba
   metricas <- metric_set(rmse)
-  flujo_ajustado <- flujo_1 %>% fit(datos_ent)
-  eval_prueba <- predict(flujo_ajustado, datos_pr) %>% 
-    bind_cols(datos_pr %>% select(y)) %>% 
+  flujo_ajustado <- flujo_1 |> fit(datos_ent)
+  eval_prueba <- predict(flujo_ajustado, datos_pr) |> 
+    bind_cols(datos_pr |> select(y)) |> 
     metricas(y, .pred)
-  eval_entrena <- predict(flujo_ajustado, datos_ent) %>% 
-    bind_cols(datos_ent %>% select(y)) %>% 
+  eval_entrena <- predict(flujo_ajustado, datos_ent) |> 
+    bind_cols(datos_ent |> select(y)) |> 
     metricas(y, .pred)
   # particionar para validación cruzada
   particiones_val_cruzada <- vfold_cv(datos_ent, v = 10)
-  eval_vc <- flujo_1 %>% 
-    fit_resamples(resamples = particiones_val_cruzada, metrics = metricas) %>% 
+  eval_vc <- flujo_1 |> 
+    fit_resamples(resamples = particiones_val_cruzada, metrics = metricas) |> 
     collect_metrics()
   res_tbl <- 
-    eval_prueba %>% mutate(tipo = "prueba") %>% 
-    bind_rows(eval_entrena %>% mutate(tipo = "entrenamiento")) %>% 
-    bind_rows(eval_vc %>% 
-              select(.metric, .estimator, .estimate = mean) %>% 
+    eval_prueba |> mutate(tipo = "prueba") |> 
+    bind_rows(eval_entrena |> mutate(tipo = "entrenamiento")) |> 
+    bind_rows(eval_vc |> 
+              select(.metric, .estimator, .estimate = mean) |> 
               mutate(tipo = "val_cruzada"))
 }
 ```
 
 ```{r}
 set.seed(82853)
-evals_tbl <- tibble(rep = 1:25) %>% 
-  mutate(data = map(rep, ~ simular_evals(.x, flujo_1, beta = a))) %>% 
+evals_tbl <- tibble(rep = 1:25) |> 
+  mutate(data = map(rep, ~ simular_evals(.x, flujo_1, beta = a))) |> 
   unnest(data)
 ```
 
 ```{r, fig.width = 6}
-ggplot(evals_tbl %>% 
-        filter(.metric == "rmse") %>% 
-        pivot_wider(names_from = tipo, values_from = .estimate) %>% 
+ggplot(evals_tbl |> 
+        filter(.metric == "rmse") |> 
+        pivot_wider(names_from = tipo, values_from = .estimate) |> 
         pivot_longer(cols = c(entrenamiento, val_cruzada), names_to = "tipo"), 
        aes(x = prueba, y = value)) +
   geom_point() + facet_wrap(~ tipo) +
@@ -359,19 +359,19 @@ modelos tenemos lo siguiente:
 ```{r}
 set.seed(8559)
 datos <- sim_datos(n = 4000, beta = a[1:40, ])
-modelo <- linear_reg(mixture = 0, penalty = tune()) %>% 
+modelo <- linear_reg(mixture = 0, penalty = tune()) |> 
   set_engine("glmnet") 
-flujo <- workflow() %>% 
-    add_model(modelo) %>% 
+flujo <- workflow() |> 
+    add_model(modelo) |> 
     add_formula(y ~ .)
 # crear partición de análisis y evaluación
 particion_val <- validation_split(datos, 0.05)
 candidatos <- tibble(penalty = exp(seq(-5, 5, 1)))
 # evaluar
 val_datos <- tune_grid(flujo, resamples = particion_val, grid = candidatos,
-                       metrics = metric_set(rmse, mae)) %>% 
-  collect_metrics() %>% 
-  select(penalty, .metric, mean) %>% 
+                       metrics = metric_set(rmse, mae)) |> 
+  collect_metrics() |> 
+  select(penalty, .metric, mean) |> 
   mutate(tipo ="datos de validación")
 ```
 
@@ -381,14 +381,14 @@ val_datos <- tune_grid(flujo, resamples = particion_val, grid = candidatos,
 datos_ent <- analysis(particion_val$splits[[1]])
 particion_vc <- vfold_cv(datos_ent, v = 10)
 val_cruzada <- tune_grid(flujo, resamples = particion_vc, grid = candidatos,
-                         metrics = metric_set(rmse, mae)) %>% 
-  collect_metrics() %>%
-  select(penalty, .metric, mean) %>% 
+                         metrics = metric_set(rmse, mae)) |> 
+  collect_metrics() |>
+  select(penalty, .metric, mean) |> 
   mutate(tipo = "validación cruzada")
 ```
 
 ```{r}
-comparacion_val <- bind_rows(val_datos, val_cruzada) %>% 
+comparacion_val <- bind_rows(val_datos, val_cruzada) |> 
   filter(.metric == "mae")
 ggplot(comparacion_val, aes(x = penalty, y = mean, colour = tipo)) +
   geom_line() + geom_point() +
@@ -470,21 +470,21 @@ metricas_vc <- tune_grid(flujo_reg,
   metrics = metric_set(rmse, mae)) 
 mejor <- select_best(metricas_vc, metric = "rmse")
 mejor_1ee <- select_by_one_std_err(metricas_vc, metric = "rmse", desc(penalty))
-metricas_vc %>% unnest(.metrics)
+metricas_vc |> unnest(.metrics)
 ```
 Vemos que esta función da un valor del error para cada vuelta de validación
 cruzada, y cada valor de lambda que pusimos en el grid:
 
 ```{r}
-metricas_vc %>% unnest(.metrics) %>%  group_by(id, .metric) %>% count()
+metricas_vc |> unnest(.metrics) |>  group_by(id, .metric) |> count()
 ```
 
 Y obtenemos:
 
 ```{r}
-metricas_resumen <- metricas_vc %>% 
+metricas_resumen <- metricas_vc |> 
   collect_metrics()
-g_1 <- ggplot(metricas_resumen %>% filter(.metric == "rmse"), 
+g_1 <- ggplot(metricas_resumen |> filter(.metric == "rmse"), 
        aes(x = penalty, y = mean, ymin = mean - std_err, ymax = mean + std_err)) +
   geom_linerange() +
   geom_point(colour = "red") +
