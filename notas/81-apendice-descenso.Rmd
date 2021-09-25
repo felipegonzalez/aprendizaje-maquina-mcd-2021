@@ -15,7 +15,6 @@ de optimización útiles, pero en aprendizaje de máquina uno de los más
 utilizados es el descenso máximo (o descenso en gradiente), y modificaciones
 como descenso estocástico.
 
-### Intro a descenso en gradiente {-}
 
 Supongamos que una función $h(x)$ es convexa y tiene un mínimo. La idea
 de descenso en gradiente es comenzar con un candidato inicial $z_0$ y calcular
@@ -216,7 +215,7 @@ Y nuestra aproximación al mínimo es:
 df_iteraciones |> tail(1)
 ```
 
-### Cálculo del gradiente
+## Cálculo del gradiente
 
 Vamos a escribir ahora el algoritmo de descenso en gradiente para regresión lineal.
 Igual que en los ejemplos anteriores, tenemos que precalcular el gradiente. Una
@@ -275,7 +274,7 @@ para ese punto particular de entrenamiento. Nos movemos entonces en una direcci�
 promedio, para intentar hacer el error total lo más chico posible.
 
 
-### Implementación
+## Implementación
 
 En este punto, podemos intentar una implementación simple basada en el código
 anterior para
