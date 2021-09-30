@@ -1,0 +1,188 @@
+---
+title: "Tarea 8: clasificación multinomial"
+output: html_notebook
+---
+
+
+### Datos
+
+Usamos los datos de cubiertas boscosas del [UCI repository](https://archive.ics.uci.edu/ml/datasets/covertype). 
+También puedes ver el archivo .info en la carpeta de los datos para más información.
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 13))
+cbb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+```
+
+```{bash}
+cat datos/nombres_variables.data 
+```
+
+
+```{r, message = FALSE, warning=FALSE}
+cubierta <- read_csv("datos/covtype.data.gz", col_names = FALSE)
+nombres <- read_delim("datos/nombres_variables.data", col_select = 1, col_names = FALSE) |> pull(1)
+nombres_completo <- c(nombres[c(1:10)], paste("Wilderness_Area_", 1:4),
+                      paste("Soil_Type_", 1:40), "Cover_Type")
+colnames(cubierta) <- nombres_completo
+```
+
+
+```{r}
+clases_nombres <- tibble(Cover_Type = 1:7,
+                         cover = factor(c("Spruce_Fir", "Lodgepole_Pine", "Ponderosa_Pine", "Cottonwood_Willow",
+                                "Aspen", "Douglas_fir", "Krummholz")))
+cubierta <- cubierta |> left_join(clases_nombres) |> 
+  select(-Cover_Type)
+```
+
+En el artículo original, utilizan la siguient división de datos:
+
+```{r}
+set.seed(11283)
+cubierta_ent <- cubierta |> filter(row_number() <= 11340 )
+cubierta_val <- cubierta |> filter(row_number() > 11340, row_number() <= 11340 + 3780)
+
+```
+
+```{r}
+cubierta_ent |> count(cover)
+```
+
+Podemos examinar algunas variables que probablemente serán importantes:
+
+```{r}
+cubierta_ent |> mutate(elevation_grp = cut_interval(Elevation, 50, labels = FALSE)) |> 
+  group_by(elevation_grp) |> 
+  count(cover) |> 
+  mutate(prop = n / sum(n)) |> 
+ggplot(aes(x = elevation_grp, y = prop, colour = cover, group = cover)) +
+  geom_line() + geom_point()
+```
+
+```{r}
+ggplot(cubierta_ent |> filter(cover %in% c("Douglas_fir", "Krummholz")), 
+       aes(x = Horizontal_Distance_To_Hydrology, 
+           y = Vertical_Distance_To_Hydrology, colour = cover)) +
+  geom_point(alpha = 0.5) 
+```
+
+Intentaremos un modelo simple para entender cómo funcionan las predicciones
+para un modelo multilogit:
+
+
+```{r}
+receta_cubierta <- recipe(cover ~ Elevation + Horizontal_Distance_To_Hydrology + 
+                            Vertical_Distance_To_Hydrology,
+                          data = cubierta_ent) |> 
+  step_normalize(all_numeric_predictors())
+```
+
+Para empezar, utilizaremos un valor fijo de penalización:
+
+```{r}
+modelo_mlogit <- multinom_reg(engine = "glmnet", mixture = 0.5, penalty = 0.001, mode = "classification")
+flujo <- workflow() |> add_recipe(receta_cubierta) |> 
+  add_model(modelo_mlogit)
+flujo_ajustado <- fit(flujo, cubierta_ent)
+```
+
+
+```{r}
+modelo_ajustado <- flujo_ajustado |> extract_fit_parsnip()
+coeficientes_tbl <- modelo_ajustado |> tidy() |> 
+  pivot_wider(names_from = term, values_from = estimate) |> 
+  select(-penalty)
+coeficientes_tbl
+```
+
+**Pregunta 1**: ¿Por qué hay cuatro coeficientes para cada clase? ¿Cuántos coeficientes
+tiene el modelo en total? 
+
+
+### Calculando predicciones
+
+Tomaremos un caso para producir probabilidades de clase, por ejemplo:
+
+```{r}
+caso <- cubierta_ent |> slice(55)
+caso
+```
+
+```{r}
+predict(flujo_ajustado, caso, type = "prob") |> pivot_longer(cols = everything(), names_to = "prob") |>
+  mutate(value = round(value, 3)) |> 
+  arrange(desc(value))
+```
+
+Ahora hacemos el cálculo a mano. Primero preprocesamos nuestro caso:
+
+```{r}
+# extraer el
+receta_prep <- extract_preprocessor(flujo_ajustado) |> prep()
+caso_prep <- bake(receta_prep, caso)
+caso_prep
+```
+**Pregunta 2** Utiliza la matriz de arriba *coeficientes_tbl* para calcular las
+probabilidades de cada clase.
+
+```{r}
+# aquí tu código
+beta_mat <- coeficientes_tbl |> select(-class) |> as.matrix()
+x <- c(1, as.numeric(caso_prep[1:3]))
+# calcula predictores lineales
+
+# calcula el softmax para producir probabilidades
+
+```
+
+
+**Pregunta 3**: En la matriz de coeficientes obtuvimos que el coeficiente para la variable
+*Elevation* en la clase *Aspen* es igual a cero. ¿Esto implica que la probabilidad de clase
+de *Aspen* con nuestro modelo no cambia cuando la elevación cambia? Explica por qué si o por qué no.
+
+## Evaluando el desempeño
+
+Podemos hacer curvas roc de cada clase contra el resto:
+
+```{r}
+preds_val <- predict(flujo_ajustado, cubierta_val, type = "prob") |> 
+  bind_cols(cubierta_val |> select(cover))
+roc_curve(preds_val, truth = cover, estimate = .pred_Aspen:.pred_Spruce_Fir) |> 
+  autoplot()
+```
+
+
+**Pregunta 4**: ¿Qué tipos de cubierta boscosa pueden indentificarse más fácilmente del resto?
+Considerando nuestro modelo simple, ¿por qué crees que eso pasa? 
+
+Hay varias maneras de calcular medidas de AUC (área bajo la curva) para modelos multiclase. Podemos
+usar por ejemplo la versión de Hand, Till (2001). "A Simple Generalisation of the Area Under the ROC Curve for Multiple Class Classification Problems".
+
+```{r}
+roc_auc(preds_val, truth = cover, estimate = .pred_Aspen:.pred_Spruce_Fir)
+```
+
+Finalmente, podemos también evaluar la tasa de clasificación correcta clasificando a 
+la clase de máxima probabilidad:
+
+```{r}
+pred_clase <- predict(flujo_ajustado, cubierta_val) |> 
+  bind_cols(cubierta_val |> select(cover))
+accuracy(pred_clase, truth = cover, estimate = .pred_class)
+mat_confusion <- conf_mat(pred_clase, truth = cover, estimate = .pred_class)
+mat_confusion
+autoplot(mat_confusion, type="heatmap")
+```
+
+
+
+**Pregunta 5**: (opcional) Podemos mejorar considerablemente este modelo: 1) no hemos usado todas las
+variables, 2) no hemos hecho ingeniería de entradas, 3) No afinamos los parámetros.
+Prueba con alguno de estos a ver si puedes mejorar los resultados.
+
+
+
