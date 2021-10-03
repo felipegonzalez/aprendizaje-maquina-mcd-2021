@@ -16,7 +16,7 @@ rmd_files: ["index.Rmd",
             "09-clasificacion-2.Rmd",
             "10-validacion-cruzada.Rmd",
             "11-redes-neuronales.Rmd",
-            "12-redes-neuronales-2.Rmd"
+            "12-redes-neuronales-2.Rmd",
             "81-apendice-descenso.Rmd",
             "82-apendice-descenso-estocastico.Rmd",
             "83-descenso-gradiente-logistica.Rmd",
