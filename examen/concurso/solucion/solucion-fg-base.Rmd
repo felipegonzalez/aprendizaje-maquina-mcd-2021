@@ -1,0 +1,343 @@
+---
+title: "Cancelaciones de reservas"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+hoteles_train <- read_csv("datos/entrena.csv")
+hoteles_test <- read_csv("datos/prueba.csv")
+sample_sub <- read_csv("datos/sample_submission.csv")
+```
+
+```{r}
+nrow(hoteles_train)
+nrow(hoteles_test)
+```
+
+## Primera vuelta
+
+### División de datos
+
+Separamos una muestra de prueba de tamaño absoluto grande
+para nuestras evaluaciones finales. El resto lo dividimos en
+entrenamiento y validación (aunque podríamos usar validación cruzada también).
+
+```{r}
+# conjunto chico de prueba (alrededor de 5000 casos)
+set.seed(889034)
+hoteles_part_inicial <- initial_split(hoteles_train, prop = 0.90)
+entrena_total <- training(hoteles_part_inicial)
+hoteles_part_val <- validation_split(entrena_total, prop = 0.90)
+hoteles_part_val$splits
+```
+
+### Limpieza, exploración y análisis conceptual
+
+```{r}
+entrena <- training(hoteles_part_val$splits[[1]])
+nrow(entrena)
+entrena |> count(is_canceled) |> 
+  mutate(prop = n / sum(n))
+```
+
+```{r}
+# install.packages("skimr")
+library(skimr)
+skim(entrena)
+```
+
+- todas las variables tienen sesgo alto (excepto las de fechas de llegada)
+- agent y company y country tienen relativamente alta cardinalidad
+
+
+```{r}
+head(sample_n(entrena, 10))
+```
+
+**Variables claramente importantes** (hipótesis):
+
+- lead time (cuánto tiempo de anticipación en la reserva), 
+- tipo de depósito (que tiene un nivel de "Non-refundable"), 
+- historial de cancelaciones, 
+- tipo de hotel
+- tipo de cliente 
+
+### Tipo de depósito y cancelaciones excesivas
+
+El depósito de Non Refund indica cancelación con alta probabilidad:
+
+```{r}
+tabla_univariada <- function(datos, variable, target){
+  datos |> count({{ variable }}, {{ target }}) |> group_by({{ variable }}) |> 
+  mutate(prop = n / sum(n)) |> mutate(prop = round(prop, 3)) 
+}
+tabla_univariada(entrena, deposit_type, is_canceled)
+
+```
+
+Aquí hay algo que es sospechoso: es muy seguro una cancelación si se pagó todo por adelantado.
+Investigando un poco:
+
+https://www.semanticscholar.org/paper/Big-Data-in-Hotel-Revenue-Management%3A-Exploring-to-Antonio-Almeida/206373e96e9c0fdbace14f3bdafe4c16f1ddfe25
+
+As an example, through analysis of the “Nonrefundable” (DepositType) canceled bookings in
+some Asiatic countries (Country) and from certain distribution channels (DistributionChannel
+and Agent), it is possible to understand why so many “Nonrefundable” bookings are canceled.
+These bookings are usually made through OTA using false or invalid credit card details. These
+bookings are issued as support for requests for visas to enter the country (a hotel booking is
+mandatory for applying for a Portuguese entry visa). After failing to charge the customer’s credit
+card, the hotel identifies these bookings as “fake” and contacts the customer; however, during the
+time required to verify these bookings, they contribute negatively to demand forecast and
+demand management decisions
+
+
+La tasa de cancelación es extremadamente alta para reservas para Portugal:
+
+```{r}
+entrena_nr <- entrena |> filter(deposit_type == "Non Refund") |> 
+                   mutate(es_portugal  = ifelse(country == "PRT", 1, 0))
+tabla_univariada(entrena_nr, es_portugal, is_canceled)
+```
+
+- Es necesario indicar reservaciones Non Refund en portugal, que casi siempre son canceladas. El resto
+del análisis lo podemos hacer sin considerar Non Refund (casi todas son de portugal):
+
+```{r}
+entrena_sin_nr <- entrena |> filter(deposit_type != "Non Refund") 
+```
+
+```{r}
+tabla_univariada(entrena_sin_nr, deposit_type, is_canceled)
+```
+
+La mayoría de las reservas son entonces sin depósito, así que continuamos con otras variables.
+
+
+### Lead time: anticipación de reservas
+
+Reservas con mucha anticipación también tiene mayor probabilidad de cancelación, mayores incrementos
+se observan a partir de 5-10 días, y después alrededor de 15-30 días. La cola de la derecha
+es larga, y no parece haber variación grande de cancelación para esos valores altos.
+
+```{r, fig.width = 8, fig.height = 4}
+e_vertical <- theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+entrena_sin_nr <- entrena_sin_nr |> mutate(grupo_lead = cut_number(lead_time, 14))
+ggplot(entrena_sin_nr, aes(x = grupo_lead, fill = is_canceled)) +
+  geom_bar() + facet_wrap(~hotel) + e_vertical
+ggplot(entrena_sin_nr, aes(x = grupo_lead, fill = is_canceled)) +
+  geom_bar(position = "fill") + facet_wrap(~hotel) + e_vertical  
+```
+
+
+
+
+```{r, fig.width = 8, fig.height = 4}
+tabla_univariada(entrena_sin_nr, customer_type, is_canceled)
+entrena_sin_nr <- entrena_sin_nr |> mutate(grupo_lead = cut_number(lead_time, 6))
+ggplot(entrena_sin_nr |> filter(customer_type!="Group"), aes(x = grupo_lead, fill = is_canceled)) +
+  geom_bar(position = "fill") + facet_wrap(~customer_type) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+- customer_type = Group es un grupo relativamente chico con tasa baja de cancelación. Transient y transient-party
+parecen tener distintos patrones de cancelación en lead time.
+
+```{r, fig.width = 8, fig.height = 4}
+tabla_univariada(entrena_sin_nr, market_segment, is_canceled)
+entrena_sin_nr <- entrena_sin_nr |> mutate(grupo_lead = cut_number(lead_time, 6))
+ggplot(entrena_sin_nr |> filter(! market_segment %in% c("Aviation", "Complmentary", "Undefined")), aes(x = grupo_lead, fill = is_canceled)) +
+  geom_bar() + facet_wrap(~market_segment) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+- La mayor parte de las reservación vienen de Agencias en línea, seguido por agencias offline. Los
+patrones de lead time indican distintas maneras de planeación para cada segmento de mercado
+
+## Historial de reservación: cancelaciones y cambios
+
+En cuanto a cancelaciones previas, tenemos generalmente cero o una
+cancelación, y rara vez más. 
+
+```{r}
+tabla_univariada(entrena_sin_nr, previous_cancellations, is_canceled) |> 
+  arrange(is_canceled)
+```
+
+Algo similar sucede para cambios en la reservación.
+
+```{r}
+tabla_univariada(entrena_sin_nr, booking_changes, is_canceled) |> 
+  arrange(is_canceled) 
+```
+```{r}
+entrena_sin_nr <- entrena_sin_nr |> mutate(dif_cancel = previous_bookings_not_canceled - previous_cancellations)
+tabla_univariada(entrena_sin_nr,dif_cancel, is_canceled) |> 
+  arrange(is_canceled) |>
+  filter(abs(dif_cancel) < 5) |> 
+ggplot(aes(x = dif_cancel, y = prop, colour = is_canceled, group = is_canceled)) + 
+  geom_line() +
+  geom_point(aes(size = sqrt(n)))
+```
+
+### Preprocesamiento e ingenieria de entradas:
+
+
+```{r}
+library(tidymodels)
+receta <- 
+  recipe(is_canceled ~ lead_time + hotel + deposit_type + customer_type + market_segment +  
+                       previous_bookings_not_canceled +
+                       previous_cancellations + booking_changes + country,
+                       data = entrena) |> 
+  step_mutate(portugal_nr = ifelse(country == "PTL" & deposit_type == "Non Refundable", 1, 0)) |> 
+  step_mutate(lead_time_cero = ifelse(lead_time == 0, 1, 0)) |> 
+  update_role(country, new_role = "ninguno") |> 
+  step_novel(market_segment, country) |> 
+  step_cut(booking_changes, breaks = c(0,1,2, 3), include_outside_range = TRUE) |> 
+  step_cut(previous_bookings_not_canceled, breaks = c(0, 1, 2, 3), include_outside_range = TRUE) |> 
+  step_cut(previous_cancellations, breaks = c(0, 1, 2, 3), include_outside_range =  TRUE) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  step_log(lead_time, offset = 1) |> 
+  step_ns(lead_time, deg_free = 2) |> 
+  step_interact( ~ starts_with("lead_time"):starts_with("hotel")) |>
+  step_interact( ~ c(starts_with("lead_time") & !contains("_x_")):starts_with("customer_type")) |>
+  step_interact( ~ c(starts_with("lead_time") & !contains("_x_")):starts_with("market_segment")) |>
+  step_interact( ~ portugal_nr:all_numeric_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+Modelo simple con baja regularización:
+
+```{r}
+modelo <- logistic_reg(penalty = 0.00001, engine = "glmnet")
+flujo <- workflow() |> add_recipe(receta) |> add_model(modelo)
+flujo_fit <- fit(flujo, entrena)
+```
+
+```{r}
+prep(receta) |> juice() |> dim()
+```
+
+
+```{r}
+valida <- testing(hoteles_part_val$splits[[1]])
+preds_val <- predict(flujo_fit, valida, type = "prob") |> 
+  bind_cols(valida |> select(is_canceled))
+```
+
+
+```{r}
+mis_metricas <- metric_set(mn_log_loss, roc_auc)
+mis_metricas(preds_val, truth = factor(is_canceled), .estimate = .pred_cancelado, event_level = "first")
+```
+
+```{r}
+preds_entrena <- predict(flujo_fit, entrena, type = "prob") |> 
+  bind_cols(entrena |> select(is_canceled))
+```
+
+
+```{r}
+mis_metricas <- metric_set(mn_log_loss, roc_auc)
+mis_metricas(preds_entrena, truth = factor(is_canceled), .estimate = .pred_cancelado, event_level = "first")
+```
+
+No hay indicación de sobreajuste. Probablemente tenemos que hacer una expansión del 
+modelo para obtener mejor desempeño.
+
+## Preparar solución
+
+```{r}
+preds_prueba_sol <- predict(flujo_fit, hoteles_test, type="prob") |> 
+  bind_cols(hoteles_test |> select(id)) |> 
+  select(id, prob = .pred_cancelado)
+preds_prueba_sol
+```
+
+```{r}
+write_csv(preds_prueba_sol, file = "submissions/modelo_base.csv")
+```
+
+**Resultados**:
+
+- Este modelo supera al benchmark (0.53396 en el public leaderboard)
+- El error de validación está muy lejos del error del leaderboard (alrededor de 15-20% más grande). Esto indica
+(si no hay errores en nuestro procedimiento), que los datos de prueba del concurso son extraídos de una población
+diferente, y que nuestro método de validación no toma en cuenta esta diferencia.
+- Podemos continuar considerando el error extra que esperamos ver en el *leaderboard*, y también podemos
+hacer adecuaciones a nuestras particiones para que reflejen mejor la tarea predictiva que se nos está pidiendo.
+
+En este caso, podemos hacer:
+
+```{r}
+hoteles_unido <- bind_rows(entrena |> select(-is_canceled) |> mutate(tipo = "train"), 
+          hoteles_test |> mutate(tipo = "test")) |> group_by(tipo) 
+hoteles_unido |> skim()
+```
+
+- La diferencias grandes son: el lead_time en test es más alto que en train (ver las medianas)
+- Los datos de test sólo tienen datos de 2017
+- La variable adr tambien parece un poco recorrida a la derecha en test
+
+
+Si examinamos año:
+
+```{r}
+hoteles_unido |> 
+  count(arrival_date_year)
+```
+
+```{r}
+hoteles_unido |> 
+  mutate(arrival_date_month = factor(arrival_date_month, levels = month.name, ordered = TRUE)) |> 
+  count(arrival_date_year, arrival_date_month)
+```
+```{r}
+hoteles_unido |> 
+  ungroup() |> 
+  mutate(arrival_date_month = factor(arrival_date_month, levels = month.name, ordered = TRUE)) |>
+  count(arrival_date_month, arrival_date_year, tipo) |> 
+ggplot(aes(x = arrival_date_month, y = n, colour = tipo)) + geom_point() +
+  facet_wrap(~arrival_date_year)
+```
+Y vemos que los datos de prueba están en futuro de los de entrenamiento. Esto explica
+la coincidencia de nuestro error de validación y nuestro error del leaderboard, y la división
+fue hecha para que nuestro ejercicio replicara la forma en que el modelo se va aplicar
+(Nota: para que fuera más realista, en realidad haríamos un corte de tiempo en el estado
+de la base de datos en una fecha, y haríamos predicción de todas las reservas activas en ese momento).
+
+
+Adicionalmente, parece haber más reservas en el periodo de prueba (con respecto a los
+años anteriores), lo cual también puede indicar
+algún cambio en la dinámica de reservaciones que puede degradar el desempeño del modelo
+
+
+
+Otra razón por la que nuestro error de validación puede ser demasiado optimista es
+cuando lo hacemos de manera incorrecta e introducimos *leakage*. Por ejemplo, si creamos
+variables que usan todos los datos entrenamiento+validación, aún cuando entrenemos
+el modelo solo con entrenamiento puede ser que nuestro error de validación sea optimista.
+
+
+### Checar company y agente:
+
+
+```{r}
+entrena |>  count(agent) |> arrange(desc(n)) |> 
+  mutate(p = 100 * n / sum(n))
+entrena |>  count(company) |> arrange(desc(n)) |> 
+  mutate(p = 100 * n / sum(n))
+```
+
+```{r}
+hoteles_test |> count(agent) |> arrange(desc(n)) |> 
+  mutate(p = 100 * n / sum(n))
+hoteles_test |> count(company) |> arrange(desc(n)) |> 
+  mutate(p = 100 * n / sum(n))
+```
+
+```{r}
+entrena |> count(agent, distribution_channel) |> arrange(desc(n))
+```
+
+
+- Nótese que company también tiene un balance

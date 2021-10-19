@@ -1,0 +1,132 @@
+---
+title: "Cancelaciones de reservas"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+hoteles_train <- read_csv("datos/entrena.csv")
+hoteles_test <- read_csv("datos/prueba.csv")
+sample_sub <- read_csv("datos/sample_submission.csv")
+```
+
+```{r}
+nrow(hoteles_train)
+nrow(hoteles_test)
+```
+
+
+### División de datos
+
+Haremos una división manual de nuestra muestra de entrenamiento
+
+```{r}
+# conjunto chico de prueba (alrededor de 5000 casos)
+set.seed(889034)
+hoteles_part_inicial <- initial_split(hoteles_train, prop = 0.90)
+entrena_total <- training(hoteles_part_inicial)
+hoteles_part_val <- validation_split(entrena_total, prop = 0.90)
+hoteles_part_val$splits
+```
+
+
+
+
+```{r}
+entrena <- training(hoteles_part_val$splits[[1]])
+entrena_nr <- entrena |> filter(deposit_type == "Non Refund") |> 
+                   mutate(es_portugal  = ifelse(country == "PRT", 1, 0))
+entrena_sin_nr <- entrena |> filter(deposit_type != "Non Refund") 
+
+```
+
+
+### Red neuronal
+
+```{r}
+receta_red <- 
+  recipe(is_canceled ~ lead_time + hotel + deposit_type + 
+                       customer_type + market_segment + previous_bookings_not_canceled +
+                       previous_cancellations + booking_changes + country + agent +
+                       total_of_special_requests + required_car_parking_spaces + 
+                       adults + children + meal +
+                       stays_in_week_nights + stays_in_weekend_nights + is_repeated_guest +
+                       adr + 
+                       assigned_room_type + reserved_room_type,
+                       data = entrena) |> 
+  step_mutate(portugal_nr = ifelse(country == "PTL" & deposit_type == "Non Refundable", 1, 0)) |> 
+  step_mutate(num_nights = stays_in_week_nights + stays_in_weekend_nights + 1) |> 
+  step_mutate(num_nights_cero = ifelse(num_nights == 0, 1, 0)) |> 
+  step_ratio( starts_with("stays"), denom = denom_vars(num_nights)) |>  
+  step_mutate(lead_time_cero = ifelse(lead_time == 0, 1, 0)) |> 
+  step_mutate(no_requests = ifelse(total_of_special_requests == 0, 1, 0)) |> 
+  step_mutate(no_adults = ifelse(adults == 0, 1, 0)) |> 
+  step_mutate(adr_cero = ifelse(adr <= 0, 1, 0)) |> 
+  step_mutate(same_room = as.numeric(as.character(assigned_room_type) == as.character(reserved_room_type))) |> 
+  step_mutate(children = ifelse(is.na(children), 0 , children)) |> 
+  step_novel(market_segment, country) |> 
+  step_other(agent, threshold = 0.005) |> 
+  step_other(country, threshold = 0.005) |>
+  step_normalize(all_numeric_predictors()) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+Dimensión de los datos:
+
+```{r}
+receta_red_prep <- prep(receta_red, entrena)
+entrena_prep <- receta_red_prep|> juice() 
+x_ent <- select(entrena_prep, -is_canceled) |> as.matrix()
+y_ent <- as.numeric(entrena_prep$is_canceled == "cancelado")
+valida <- testing(hoteles_part_val$splits[[1]])
+valida_prep <- bake(receta_red_prep, valida)
+x_val <- select(valida_prep, -is_canceled) |> as.matrix()
+y_val <- as.numeric(valida_prep$is_canceled == "cancelado")
+```
+
+
+Modelo simple con baja regularización:
+
+```{r}
+library(keras)
+modelo_red <-  keras_model_sequential() |> 
+  layer_dense(units = 200, activation = "sigmoid", kernel_regularizer = regularizer_l2(0.000001)) |> 
+  layer_dense(units = 1, activation = "sigmoid", kernel_regularizer = regularizer_l2(0.000001))
+compile(modelo_red, 
+        optimizer = optimizer_sgd(lr = 0.005, momentum = 0.9),
+        loss = "binary_crossentropy", 
+        metrics = c("binary_crossentropy"))
+```
+
+```{r}
+history <- modelo_red %>% fit(
+  x_ent, y_ent, 
+  batch_size = 1000, 
+  epochs = 1000, 
+  validation_data = list(x_val, y_val)
+)
+```
+
+```{r}
+save_model_hdf5(modelo_red, "modelo-hoteles.h5")
+saveRDS(history, "historia-red.rds")
+```
+
+
+```{r}
+#modelo_red <- load_model_hdf5("modelo-hoteles.h5")
+
+x_test <- bake(receta_red_prep, hoteles_test) |> as.matrix()
+preds_red <- predict(modelo_red, x_test)
+preds_red_tbl <- tibble(id = hoteles_test$id, prob = preds_red[,1])
+```
+
+```{r}
+
+write_csv(preds_red_tbl, file = "submissions/modelo_sub_red.csv")
+```
+
+- Obtiene 0.401 en private y 0.405 en public
+- Afinar arquitectura (por ejemplo, 2 capas de 100 unidades cada una)
