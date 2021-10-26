@@ -140,7 +140,7 @@ del filtro de promedios móviles que vimos arriba.
 ```{r, message=FALSE, warning=FALSE, fig.show = "hold", out.width = "50%"}
 library(imager)
 # leer imagen
-estatua <- load.image('figuras/escultura.jpg') |> grayscale
+estatua <- load.image('figuras/escultura.jpg') |> grayscale()
 estatua_mat <- as.array(estatua)
 dim(estatua_mat)
 # definir arreglo
