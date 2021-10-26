@@ -70,7 +70,7 @@ frecuencia:
 library(RcppRoll)
 h <- function(x){ifelse(x>0, x, 0)}
 datos <- tibble(t = 1:length(BJsales),
-                    serie = as.numeric(BJsales) + rnorm(length(BJsales), 0, 10)) %>%
+                    serie = as.numeric(BJsales) + rnorm(length(BJsales), 0, 10)) |>
           mutate(promedio_mov = roll_mean(serie, 5, align='center', fill = NA))
 ggplot(filter(datos, t < 100), aes(x=t, y=serie)) + geom_line() + 
   geom_line(aes(y=promedio_mov), colour='red', size=1.2)
@@ -140,7 +140,7 @@ del filtro de promedios móviles que vimos arriba.
 ```{r, message=FALSE, warning=FALSE, fig.show = "hold", out.width = "50%"}
 library(imager)
 # leer imagen
-estatua <- load.image('figuras/escultura.jpg') %>% grayscale
+estatua <- load.image('figuras/escultura.jpg') |> grayscale
 estatua_mat <- as.array(estatua)
 dim(estatua_mat)
 # definir arreglo
@@ -422,7 +422,7 @@ mientras que los de entrenamiento tienen las perturbaciones de nuestro proceso d
 
 
 ```{r}
-score <- modelo %>% evaluate(x[-indices_entrena,,,], y[-c(indices_entrena)] / 10)
+score <- modelo |> evaluate(x[-indices_entrena,,,], y[-c(indices_entrena)] / 10)
 score
 ```
 
