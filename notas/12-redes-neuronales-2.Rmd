@@ -69,7 +69,7 @@ frecuencia:
 ```{r, fig.width=5, fig.asp=0.5, warning=FALSE, message=FALSE}
 library(RcppRoll)
 h <- function(x){ifelse(x>0, x, 0)}
-datos <- data_frame(t = 1:length(BJsales),
+datos <- tibble(t = 1:length(BJsales),
                     serie = as.numeric(BJsales) + rnorm(length(BJsales), 0, 10)) %>%
           mutate(promedio_mov = roll_mean(serie, 5, align='center', fill = NA))
 ggplot(filter(datos, t < 100), aes(x=t, y=serie)) + geom_line() + 
