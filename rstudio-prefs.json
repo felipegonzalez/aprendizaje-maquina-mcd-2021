@@ -1,0 +1,10 @@
+{
+    "save_workspace": "never",
+    "always_save_history": false,
+    "reuse_sessions_for_project_links": true,
+    "load_workspace": false,
+    "initial_working_directory": "~",
+    "insert_native_pipe_operator": true,
+    "real_time_spellchecking": false,
+    "posix_terminal_shell": "bash"
+}

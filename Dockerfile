@@ -46,3 +46,5 @@ RUN install2.r reticulate tensorflow keras \
 RUN install2.r gifski
 RUN install2.r vip RcppRoll
 
+COPY --chown=rstudio:rstudio rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
+
