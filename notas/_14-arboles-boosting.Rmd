@@ -122,7 +122,7 @@ set.seed(227818)
 library(rpart)
 x <- rnorm(200, 0, 30)
 y <- 2*ifelse(x < 0, 0, sqrt(x)) + rnorm(200, 0, 0.5)
-dat <- data.frame(x=x, y=y)
+dat <- tibble(x = x, y = y)
 ```
 
 Pondremos los árboles de cada paso en una lista. Podemos comenzar con una constante
@@ -139,71 +139,70 @@ Ahora construirmos nuestra función de predicción y el paso
 que agrega un árbol
 
 ```{r}
-predecir_arboles <- function(arboles_fsam, x){
-  preds <- lapply(arboles_fsam, function(arbol){
-    predict(arbol, data.frame(x = x))
-  })
-  reduce(preds, `+`)
+library(patchwork)
+predecir_arboles <- function(arboles_fsam, dat){
+  preds <- map(arboles_fsam, \(arbol) predict(arbol, dat)) |> 
+    reduce(`+`)
+  dat |> mutate(preds = preds) |> 
+    mutate(res = y - preds)
 }
-agregar_arbol <- function(arboles_fsam, dat, plot=TRUE){
-  n <- length(arboles_fsam)
-  preds <- predecir_arboles(arboles_fsam, x = dat$x)
-  dat$res <- y - preds
-  arboles_fsam[[n+1]] <- rpart(res ~ x, data = dat, 
-    control = list(maxdepth = 1))
-  dat$preds_nuevo <- predict(arboles_fsam[[n+1]])
-  dat$preds <- predecir_arboles(arboles_fsam, x=dat$x)
-  g_res <- ggplot(dat, aes(x = x)) + 
-    geom_point(aes(y=res), size =1.1, alpha = 0.7, colour ="red") + 
-    geom_line(aes(y=preds_nuevo)) +
-    labs(title = 'Residuales') + ylim(c(-10,10))
-  g_agregado <- ggplot(dat, aes(x=x)) + 
+agregar_arbol <- function(arboles_fsam, dat, plot = TRUE){
+  preds_tbl <- predecir_arboles(arboles_fsam, dat)
+  g_agregado <- ggplot(preds_tbl, aes(x = x)) + 
     geom_point(aes(y = y), size = 1.1, alpha = 0.7, colour = "red") +
-    geom_line(aes(y=preds), colour = 'black',
+    geom_line(aes(y = preds), colour = 'black',
     size=1.1)  + 
-    labs(title ='Ajuste')
-  if(plot){
-    print(g_res)
-    print(g_agregado)
-  }
+    labs(title ='Ajuste acumulado')
+  # ajustar nuevo árbol 
+  n <- length(arboles_fsam)
+  arboles_fsam[[n + 1]] <- rpart(res ~ x, preds_tbl, control = list(maxdepth = 1))
+  #
+  preds_tbl <- preds_tbl |> 
+    mutate(preds_nuevo = predict(arboles_fsam[[n + 1]]), dat)
+  g_res <- ggplot(preds_tbl, aes(x = x)) + 
+    geom_point(aes(y = res), size =1.1, alpha = 0.7, colour ="red") + 
+    geom_line(aes(y=preds_nuevo)) +
+    labs(title = 'Residuales y nueva T') + ylim(c(-10,10))
+  if(plot) print(g_agregado + g_res)
   arboles_fsam
 }
+
 ```
 
 Ahora construiremos el primer árbol. Usaremos 'troncos' (stumps), árboles con
 un solo corte: Los primeros residuales son simplemente las $y$'s observadas
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5, message = FALSE}
 arboles_fsam <- agregar_arbol(arboles_fsam, dat)
 ```
 
 Ajustamos un árbol de regresión a los residuales:
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5}
 arboles_fsam <- agregar_arbol(arboles_fsam, dat)
 ```
 
 E iteramos:
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5}
 arboles_fsam <- agregar_arbol(arboles_fsam, dat)
 ```
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5}
 arboles_fsam <- agregar_arbol(arboles_fsam, dat)
 ```
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5}
 arboles_fsam <- agregar_arbol(arboles_fsam, dat)
 ```
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5}
 arboles_fsam <- agregar_arbol(arboles_fsam, dat)
 ```
 
 Después de 20 iteraciones obtenemos:
 
-```{r, fig.width=4, fig.asp=0.7}
+```{r, fig.width=6, fig.asp=0.5}
 for(j in 1:19){
 arboles_fsam <- agregar_arbol(arboles_fsam, dat, plot = FALSE)
 }
