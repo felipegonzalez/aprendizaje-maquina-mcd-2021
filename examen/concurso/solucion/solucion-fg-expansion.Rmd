@@ -1,0 +1,260 @@
+---
+title: "Cancelaciones de reservas"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+hoteles_train <- read_csv("datos/entrena.csv")
+hoteles_test <- read_csv("datos/prueba.csv")
+sample_sub <- read_csv("datos/sample_submission.csv")
+```
+
+```{r}
+nrow(hoteles_train)
+nrow(hoteles_test)
+```
+
+
+### División de datos
+
+Haremos una división manual de nuestra muestra de entrenamiento
+
+```{r}
+# conjunto chico de prueba (alrededor de 5000 casos)
+set.seed(889034)
+hoteles_part_inicial <- initial_split(hoteles_train, prop = 0.90)
+entrena_total <- training(hoteles_part_inicial)
+hoteles_part_val <- validation_split(entrena_total, prop = 0.90)
+entrena <- training(hoteles_part_val$splits[[1]])
+hoteles_part_val$splits
+```
+
+### Limpieza, exploración y análisis conceptual
+
+
+
+
+
+```{r}
+tabla_univariada <- function(datos, variable, target){
+  datos |> count({{ variable }}, {{ target }}) |> group_by({{ variable }}) |> 
+  mutate(prop = n / sum(n)) |> mutate(prop = round(prop, 3)) 
+}
+
+```
+
+
+```{r}
+entrena_nr <- entrena |> filter(deposit_type == "Non Refund") |> 
+                   mutate(es_portugal  = ifelse(country == "PRT", 1, 0))
+entrena_sin_nr <- entrena |> filter(deposit_type != "Non Refund") 
+
+```
+
+
+
+### Agent
+
+```{r}
+entrena_sin_nr |> count(agent) |> arrange(desc(n)) |> mutate(p = 100 * n / sum(n))
+tabla_univariada(entrena, agent, is_canceled) |> group_by(agent) |> mutate(n_base = sum(n)) |> 
+  arrange(desc(n_base))
+```
+
+### Tipo de reserva
+
+Estas dos variables muestran asociación con cancelación:
+
+```{r}
+tabla_univariada(entrena_sin_nr, total_of_special_requests, is_canceled) |> 
+  filter(total_of_special_requests <= 4 )
+```
+Esta muestra asociación fuerte con cancelación:
+
+```{r}
+tabla_univariada(entrena_sin_nr, required_car_parking_spaces, is_canceled) |> 
+  filter(required_car_parking_spaces < 4 )
+```
+
+```{r}
+tabla_univariada(entrena_sin_nr, meal, is_canceled)
+```
+
+
+### Composición de grupo
+
+Mayor número de adultos parece indicar mayor probabilidad de cancelación (nótese que algunos grupos son grandes)
+
+```{r}
+tabla_univariada(entrena_sin_nr, adults, is_canceled)
+```
+Igualmente mayor número de niños: es necesario arreglar valores faltantes:
+
+```{r}
+tabla_univariada(entrena_sin_nr, children, is_canceled)
+```
+### Canal de distribución
+
+La distribución es docminada por agentes online y offline
+
+```{r}
+entrena_sin_nr |> count(distribution_channel)
+```
+
+```{r}
+entrena_sin_nr |> tabla_univariada(distribution_channel, is_canceled)
+
+```
+
+### Otras variables
+
+```{r}
+tabla_univariada(entrena_sin_nr, is_repeated_guest, is_canceled)
+```
+
+```{r}
+entrena_sin_nr <- entrena_sin_nr |> mutate(num_nights = stays_in_weekend_nights + stays_in_week_nights)
+num_nights <- tabla_univariada(entrena_sin_nr, num_nights, is_canceled) 
+num_nights
+```
+```{r}
+num_nights |> filter(num_nights < 20, is_canceled == "cancelado") |> 
+  ggplot(aes(x = num_nights, y = prop)) + geom_line()
+```
+
+## Daily rate
+
+Hay más cancelaciones en daily rates altos:
+
+```{r}
+ggplot(entrena_sin_nr, aes(x = adr, fill = is_canceled)) + geom_histogram()
+```
+
+
+
+### Preprocesamiento e ingenieria de entradas:
+
+
+```{r}
+library(tidymodels)
+receta <- 
+  recipe(is_canceled ~ lead_time + hotel + deposit_type + 
+                       customer_type + market_segment + previous_bookings_not_canceled +
+                       previous_cancellations + booking_changes + country + agent +
+                       total_of_special_requests + required_car_parking_spaces + 
+                       adults + children + meal +
+                       stays_in_week_nights + stays_in_weekend_nights + is_repeated_guest +
+                       adr + 
+                       assigned_room_type + reserved_room_type,
+                       data = entrena) |> 
+  step_mutate(portugal_nr = ifelse(country == "PTL" & deposit_type == "Non Refundable", 1, 0)) |> 
+  step_mutate(num_nights = stays_in_week_nights + stays_in_weekend_nights + 1) |> 
+  step_mutate(num_nights_cero = ifelse(num_nights == 0, 1, 0)) |> 
+  step_ratio( starts_with("stays"), denom = denom_vars(num_nights)) |>  
+  step_mutate(lead_time_cero = ifelse(lead_time == 0, 1, 0)) |> 
+  step_mutate(no_requests = ifelse(total_of_special_requests == 0, 1, 0)) |> 
+  step_mutate(no_adults = ifelse(adults == 0, 1, 0)) |> 
+  step_mutate(adr_cero = ifelse(adr <= 0, 1, 0)) |> 
+  step_mutate(same_room = as.numeric(as.character(assigned_room_type) == as.character(reserved_room_type))) |> 
+  step_cut(adults, breaks = c(0, 1, 2, 3, 4), include_outside_range = TRUE) |> 
+  step_mutate(children = ifelse(is.na(children), 0 , children)) |> 
+  step_cut(required_car_parking_spaces, breaks = c(0, 1, 2), include_outside_range = TRUE) |> 
+  step_novel(market_segment, country) |> 
+  step_cut(booking_changes, breaks = c(0,1,2, 3), include_outside_range = TRUE) |> 
+  step_cut(previous_bookings_not_canceled, breaks = c(0, 1, 2, 3, 4), include_outside_range = TRUE) |> 
+  step_cut(previous_cancellations, breaks = c(0, 1, 2, 3, 4), include_outside_range =  TRUE) |> 
+  step_other(agent, threshold = 0.0025) |> 
+  step_other(country, threshold = 0.0025) |> 
+  step_dummy(all_nominal_predictors()) |> 
+  step_log(lead_time, offset = 1) |> 
+  step_log(adr, offset = 10) |> 
+  step_ns(lead_time, deg_free = 4) |> 
+  step_ns(num_nights, deg_free= 4) |>
+  step_ns(adr, deg_free = 3) |> 
+  step_interact(~ starts_with("adr"):starts_with("customer_type")) |> 
+  step_interact(~ starts_with("adr"):starts_with("market_segment")) |> 
+  step_interact(~ starts_with("required"):no_requests) |> 
+  step_interact(~ starts_with("total_of_special"):starts_with("required")) |>
+  step_interact( ~ starts_with("hotel"):starts_with("country")) |> 
+  step_interact( ~ starts_with("lead_time"):starts_with("market_segment")) |>
+  step_interact( ~ starts_with("lead_time"):starts_with("customer_type")) |>
+  step_interact( ~ c(starts_with("lead_time") & !contains("_x_")):starts_with("country")) |>
+  step_interact( ~ c(starts_with("lead_time") & !contains("_x_")):starts_with("hotel")) |>
+  step_interact(~ starts_with("customer_type"):starts_with("market_segment")) |> 
+  step_interact(~ starts_with("hotel"):starts_with("customer_type")) |> 
+  step_zv(all_predictors())
+```
+
+Dimensión de los datos:
+
+```{r}
+prep(receta, entrena) |> juice() |> dim()
+```
+
+
+Modelo simple con baja regularización:
+
+```{r}
+modelo <- logistic_reg(penalty = 1e-5, mixture = 0.0, engine = "LiblineaR") 
+flujo <- workflow() |> add_recipe(receta) |> add_model(modelo)
+flujo_fit <- fit(flujo, entrena)
+```
+
+```{r}
+valida <- testing(hoteles_part_val$splits[[1]])
+preds_val <- predict(flujo_fit, valida, type = "prob") |> 
+  bind_cols(valida |> select(is_canceled))
+```
+
+
+```{r}
+mis_metricas <- metric_set(mn_log_loss, roc_auc)
+mis_metricas(preds_val, truth = factor(is_canceled), .estimate = .pred_cancelado, event_level = "first")
+```
+```{r}
+preds_entrena <- predict(flujo_fit, entrena, type = "prob") |> 
+  bind_cols(entrena |> select(is_canceled))
+```
+
+
+```{r}
+mis_metricas <- metric_set(mn_log_loss, roc_auc)
+mis_metricas(preds_entrena, truth = factor(is_canceled), .estimate = .pred_cancelado, event_level = "first")
+```
+```{r}
+ggplot(preds_val, aes(x = .pred_cancelado, fill = factor(is_canceled))) + 
+  geom_histogram()
+```
+
+
+### Preparar solución
+
+```{r}
+preds_prueba_sol <- predict(flujo_fit, hoteles_test, type="prob") |> 
+  bind_cols(hoteles_test |> select(id)) |> 
+  select(id, prob = .pred_cancelado)
+preds_prueba_sol
+```
+
+```{r}
+write_csv(preds_prueba_sol, file = "submissions/modelo_sub_11.csv")
+```
+
+**Resultados**:
+
+1. Este modelo supera al benchmark (0.48 en el public leaderboard) usando solo *agent* y *country*. No hay indicación
+de sobreajuste. Agent y country parecen importantes
+2. Agregando **espacios de coche** y **special requests** obtiene  0.46 en el public leaderboard. No hay indicación de sobreajuste.
+3. Agregando niños, adultos y meals obtenemos un resultado similar al anterior. Esta información adicional, como
+la incluimos, no muestra una mejoría.
+4. Agregar la interacción (que debíamos haber incluido antes) **segmento de mercado** y **tipo de cliente** baja el score a 0.45.
+Todavía no vemos signos de sobreajuste.
+5. Distribution channel, incluyendo interacción con market segment, no parece ayudar mucho (pendiente)
+6. Mejora muy chica al incluir *stays_in_week*.
+7. Agregar interacción de hotel con segmento de mercado y tipo de cliente: poca mejoría
+8. Incrementar flexibilidad de splines mejora a 0.447
+9. Incluir tipo de cuarto reservado, tipo de cuarto asignado y si coinciden mejora a 0.441
+10. Usar LibLinear (más rápido para este problema) 0.434
+
