@@ -700,27 +700,56 @@ $$\Omega(T) = \gamma |T| + \lambda \sum_t w_t ^2$$
 donde las $w_t$ son los valores de $T$ en cada una de sus nodos terminales. Se usa entonces
 una penalización costo-complejidad como en árboles CART (el término de $\gamma$), junto con una penalización L2 sobre las predicciones del nuevo árbol ajustado, donde $T(x^{(i)}) = w_{t(i)}$.
 
-### Paso de optimización cuadrático {-}
+### Paso de optimización para xgboost {-}
 
 En *xgboost*, en lugar de usar solo el gradiente para hacer cada paso, se utiliza una aproximación
-de segundo orden a la función de pérdida y se optimiza analíticamente:
+de segundo orden a la función de pérdida y se optimiza analíticamente. Siguiendo a [@xgboost]:
 
-$$L(y^{(i)}, f_{m-1}(x^{(i)}) + T(x^{(i)}))\approx L(y^{(i)}, f_{m-1}(x^{(i)})) + 
-g_iT(x^{(i)}) + \frac{1}{2}h_i (T(x^{(i)}))^2$$
+$$\sum_i L(y^{(i)}, f_{m-1}(x^{(i)}) + T(x^{(i)})) + \Omega(T) \approx \sum_i \left\{ L(y^{(i)}, f_{m-1}(x^{(i)})) + 
+g_iT(x^{(i)}) + \frac{1}{2}h_i (T(x^{(i)}))^2 \right\}+ \Omega(T)$$
 
 donde $g_i$ es el gradiente y $h_i$ es la segunda derivada de la función de pérdida. El primer término
-del lado derecho de esta ecuación es constante, y dada una estructura de árbol dada, es posible
-encontrar analíticamente los pesos $T(x^{(i)})$ que minimizan el lado derecho de esta ecuación. Este
-enfoque parece mejorar la velocidad y calidad de los predictores resultantes.
-Para escoger los cortes se seleccionan variables y puntos de corte usando de manera miope con este criterio
-[@xgboost].
+del lado derecho de esta ecuación es constante, así que tenemos que minimizar (buscando
+sobre posibles árboles $T$)
+
+$$\sum_i \left\{ g_iT(x^{(i)}) + \frac{1}{2}h_i (T(x^{(i)}))^2 \right\}+ \Omega(T) $$
+
+que es igual a
+
+$$\sum_i \left\{ g_iT(x^{(i)}) + \frac{1}{2}h_i (T(x^{(i)}))^2 \right\}+ \Omega(T) $$
+
+Supongamos que tenemos un árbol dado $T$, con regiones terminales $R_j$ donde
+hacemos una misma predicción $w_j$. Es decir $T(x^{(i)}) = w_j$ cuando $x^{(i)}\in R_j$.
+Agrupando por regiones $R_j$, podemos escribir la ecuación de arriba como
+
+$$\sum_{j=1}^{|T|} \left\{ G_jw_j +\frac{1}{2}(H_j + \lambda)w_j^2     \right\} + \gamma |T|$$
+donde $G_j$ es la suma de todas las derivadas $g_i$ para los datos que satisfacen
+$x^{(i)}\in R_j$ (caen en la región $R_j$) y análogamente $H_j$ es la suma de las
+segundas derivadas $h_i$ para los datos que satisfacen
+$x^{(i)}\in R_j$. Como el árbol está fijo, podemos encontrar analíticamente
+la solución $w_j^*$ que minimiza este objetivo (derivando e igualando a cero):
+
+$$w_j^* = -\frac{G_j}{H_j + \lambda }$$
+que sustituyendo en la ecuación anterior nos da un valor del objetivo de
+
+$$obj=-\frac{1}{2}\sum_{j=1}^{|T|} \frac{G_j^2}{H_j + \lambda} + \gamma |T|,$$
+Este último valor objetivo, que ya considera optimizadas las predicciones en cada
+nodo, es una medida de la calidad de los cortes que hicimos para el árbol $T$. Ahora 
+podemos regresar a pensar en la estructura del árbol $T$ que es necesario escoger, y la
+idea es que debe minimizar esta cantidad. Para hacer esto, regresamos a la
+estrategia miope de árboles de decisión, pero considerando *esta última
+como medida a minimizar, en lugar de la impureza*. Para hacer un nuevo corte entonces
+calculamos el objetivo actual $obj$ con el que obtenemos al hacer
+un corte particular, que escribimos como $obj'$. Como el nuevo árbol
+tiene un nodo más, y sólo divide uno de los nodos del árbol existente, estas
+sumas difieren en un término del árbol original:
+
+$$obj - obj' = \frac{1}{2}\left\{ \frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L+G_R)^2}{H_L + H_R +\lambda}\right\} - \gamma$$
+y buscamos entonces el corte que hace este valor lo más grande posible (en lugar de usar im pureza). Dejamos de cortar si este valor es negativo para cualquier corte. 
 
 
-### Otras optimizaciones de xgboost {-}
+También podemos entonces entrenar $\gamma$ (loss_reduction en tidymodels):
 
-Adicionalmente, *xgboost* y implementaciones modernas de boosting están diseñadas para ser
-escaladas a datos más grandes. Esto incluye paralelismo, manejo eficiente de memoria, posibilidad
-de usar GPUs para el entrenamiento, y aproximaciones eficientes para encontrar los cortes para cada estructura [@xgboost] de árbol.
 
 ```{r}
 #xgboost es el default
