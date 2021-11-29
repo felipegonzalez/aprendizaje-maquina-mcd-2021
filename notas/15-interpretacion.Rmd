@@ -9,6 +9,7 @@ cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2"
 ```
 
 
+
 En esta parte discutiremos diversas herramientas que sirven para
 entender cómo funcionan y hacen predicciones modelos particulares. La primera
 distinción importante es el tipo de interpretación que buscamos: 
@@ -438,12 +439,20 @@ flujo_bosque <- workflow() |>
 bosque_ajustado <- fit(flujo_bosque, casas_entrena) 
 ```
 
+```{r, message=FALSE, include=FALSE, warning=FALSE}
+devtools::install_github("christophM/iml", 
+                         ref = "48dfc4eb847ff2bc267570316c662acb36ff9d52",
+                         force = TRUE)
+```
+
+
 ```{r, message = FALSE}
 library(iml)
 # necesitamos esta función para el paquete iml
 pred_iml <- function(model, newdata){
    predict(model, new_data = newdata) |> pull(.pred)
 }
+
 predictor <- Predictor$new(model = bosque_ajustado, data = casas_pr, 
   y = "precio_miles", predict.fun = pred_iml)
 ```
@@ -477,7 +486,7 @@ replica_boot <- function(datos, modelo, respuesta, vars_usadas){
     predictor <- Predictor$new(model = modelo, data = datos_boot, y = respuesta, 
             predict.fun = pred_iml)
     imp_bosque <- FeatureImp$new(predictor, loss = "mape", 
-        compare = "difference", n.repetitions = 2, features = vars_usadas)
+        compare = "difference", n.repetitions = 1, features = vars_usadas)
     importancias <- imp_bosque$results 
     importancias
 }
@@ -599,7 +608,7 @@ Una manera común (ojo: no es la única) de asignar contribuciones si el modelo 
 es la siguiente:
 
 Si $f(X_1,\ldots, X_p) = \beta_0 + \beta_1 X_1 + \cdots + \beta_p X_p$ , y 
-$x^* = (x_1^*^,x_2^*,\ldots, x_p^*)$ es un caso o instancia particular, podemos
+$x^* = (x_1^*,x_2^*,\ldots, x_p^*)$ es un caso o instancia particular, podemos
 definir la contribución $\phi_j = \phi_j (x^*)$ de la variable $j$ en la predicción como
 
 $$\phi_j  = \beta_j(x_j^* - \mu_j),$$
@@ -702,4 +711,150 @@ arriba.
 
 
 ### Valores de Shapley
+
+
+La idea principal en los valores de Shapley es que para entender la contribución de una variable,
+es necesario considerar su contribución según distintos órdenes en el que consideramos las variables.
+
+Definimos primero la *contribución* de un conjunto de variables $S\subset M,$ donde
+$M =\{x_1, x_2\ldots, x_p\}$, marginalizando como sigue con la muestra de entrenamiento:
+
+Suponiendo que 
+$S = \{1,2,3,\ldots ,k\}$ entonces
+$$v(S) = \frac{1}{N}\sum_i f(x_1^*,x_2^*,\ldots, x_k^*, x_k^{(i)}, x_{k+1}^{(i)}, \ldots, x_p^{(i)})$$
+Donde se mantienen fijos los elementos de $S$, y promediamos sobre los elementos
+que no están en $S$. Esto podemos hacerlo para cualquier subconjunto $S$ de variables.
+Ahora consideramos una variable dada $j$, y consideramos las
+diferencias:
+$$v(S\cup {j}) - v(S)$$
+Es decir, cuánto contribuye la variable $j$ cuando la agregamos a las variables que ya
+teníamos en $S$. 
+
+El valor de Shapley de la variable $j$ es
+
+$$\phi_j = \sum_{S\subset M, j\notin S} \frac{|S|!(M - |S| -1)!}{M!} (v(S\cup j) -v(S))$$
+
+Los ponderadores están dados como discutimos arriba: hay $M!$ posibles ordenamientos
+de las variables. Los ordenamientos que incluyen la comparación $v(S\cup j) -v(S)$ 
+satisfacen: las primeras $|S|$ variables pueden haber entrado de $|S|!$ maneras, luego sigue la $j$,
+y el restante de las variables pueden entrar de $(M-|S|-1)!$ maneras.
+
+### Ejemplo: precios de casas {-}
+
+Consideremos entonces el bosque que construimos arriba para los precios de casas,
+y consideramos una casa particular:
+
+```{r, fig.height=10, fig.width = 10}
+set.seed(232)
+shapley_val <- Shapley$new(predictor, x.interest = casas_entrena[21,])
+shapley_val$results <- filter(shapley_val$results, feature %in% vars_usadas)
+shapley_val$plot()
+```
+
+La suma de los valores phi da (aproximadamente, por el algoritmo usado) la diferencia entre nuestra predicción para esta instancia y la predicción promedio:
+
+```{r}
+sum(shapley_val$results$phi)
+```
+
+Ahora hacemos otro ejemplo:
+
+```{r, fig.height=10, fig.width = 10}
+shapley_val <- Shapley$new(predictor, x.interest = casas_entrena[52,])
+shapley_val$results <- filter(shapley_val$results, feature %in% vars_usadas)
+shapley_val$plot()
+sum(shapley_val$results$phi)
+
+```
+
+
+```{r, fig.height=10, fig.width = 10}
+shapley_val <- Shapley$new(predictor, x.interest = casas_entrena[121,])
+shapley_val$results <- filter(shapley_val$results, feature %in% vars_usadas)
+shapley_val$plot()
+```
+
+
+
+
+**Observaciones**:
+
+- Nótese que las contribuciones de cada variable en un mismo nivel puede ser diferente en diferentes instancias, pues los modelos que usamos típicamente incluyen interacciones.
+
+- Calcular sobre todas las posibles permutaciones de las variables es demasiado costoso. Para estimar el valor de Shapley, en *iml* se toma una muestra de permutaciones, y para cada una se calcula el 
+valor correspondiente $v(S\cup j) - v(S),$ dependiendo dónde aparece $j$, y promediando sobre las variables que no aparecen en $S$ como mostramos arriba. No es necesario ponderar la muestra de
+permutaciones.
+
+- Existen también versiones adaptadas a los árboles que son más rápìdas. 
+
+### Ejemplo {-}
+
+Para un modelo de clasificación, xgboost calcula los valores de shapley en la escala
+logit (del predictor lineal)
+
+```{r, fig.width=7, fig.height=13, message=FALSE, warning = FALSE}
+library(xgboost)
+nse_tbl <- nse_entrena %>% ungroup %>% 
+    dplyr::select(ab, conex_inte, ocupados, 
+                  num_tvd, educa_jefe, tam_loc, combustible, num_auto)
+mat_x <- model.matrix(ab ~ -1 + ., nse_tbl)
+d_entrena <- xgb.DMatrix(data = mat_x, label = nse_tbl$ab)
+boost_nse <- xgboost(mat_x, label = as.numeric(nse_tbl$ab == "1"), 
+                     nrounds = 500, eta = 0.1, 
+                     max_depth = 3, subsample = .5,
+              objective = "binary:logistic", nthread = 2, verbose = 0)
+shap_nse <- xgb.plot.shap(mat_x, model = boost_nse, top_n = 8, n_col = 2)
+pred_base <- mean(nse_tbl$ab==1)
+```
+
+
+```{r, fig.width = 8, fig.height = 6}
+data <- shap_nse$data
+contrib <- shap_nse$shap_contrib
+dat_g <- tibble(educa_jefe = data[, "educa_jefe"], shap_educa = contrib[, "educa_jefe"],
+                shap_ocupados = contrib[, "ocupados"], ) %>% 
+    sample_n(2000)
+ggplot(dat_g, aes(x = educa_jefe, y = shap_educa, colour = shap_ocupados)) + 
+    geom_jitter(alpha = 0.9, width = 0.5, height = 0) +
+    scale_color_gradient(low="orange", high="black")
+```
+
+Y podemos ver predicciones individuales:
+
+```{r}
+graf_caso <- function(data, contrib, ind_caso, pred_base){
+    dat_tbl <- tibble(variable = colnames(data), valor = data[ind_caso, ], 
+                      shap = contrib[ind_caso,]) %>% 
+    unite("variable_valor", variable, valor) %>% 
+    mutate(variable_valor = fct_reorder(variable_valor, shap))
+    pred_logit <- log(pred_base / (1-pred_base))  + sum(dat_tbl$shap)
+    pred <- 1 / (1 + exp(-pred_logit))
+    sprintf("Predicción base: %0.2f, Predicción: %0.2f",  pred_base, pred) %>% print
+    ggplot(dat_tbl, aes(x= variable_valor, y = shap, ymax = shap, ymin = 0)) + 
+        coord_flip() +geom_point() + geom_hline(yintercept = 0, colour = "gray") +
+        geom_linerange() 
+}
+graf_caso(data, contrib, 10, pred_base)
+```
+
+
+
+```{r}
+graf_caso(data, contrib, 102, pred_base)
+```
+
+**Discusión**:
+
+- Un valor de contribución que puede ser más apropiado para los valores Shapley es condicionando
+en cada caso a la información que se tiene durante el proceso de adición de variables. Es decir, usamos
+$$v(S) = E_{X_C|X_S}\left [ f(X_S,X_C) \,  | \, X_S = x_s^* \right].$$
+Esta cantidad es teóricamente más apropiada para hacer predicciones cuando "no tenemos" las variables de $X_C$. Sin embargo, calcular esta cantidad es considerablemente difícil, pues requiere modelar también la conjunta
+de $(X_1,\ldots, X_p)$, lo cuál en general es difícil. Hasta en regresión lineal, incluso sin interacciones, no es
+trivial hacer estos cálculos. Generalmente se utilizan como mostramos arriba. Una desventaja clara del proceso
+como lo mostramos arriba es que puede ser que al hacer estos promedios, usemos partes del modelo con poca información y malas predicciones. Los valores de Shapley pueden ser ruidosos en este caso.
+
+- Los que mostramos arriba son llamados comunmente valores SHAP o explicación aditiva de Shapley. Existen muchas variaciones de la aplicación de valores de Shapley para entender predictores y es un tema de investigación activo.
+
+
+
 
