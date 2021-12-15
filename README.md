@@ -3,7 +3,7 @@
 Notas y material para el curso de Aprendizaje de Máquina
 
 - [Notas](https://aprendizaje-maquina-2021-mcd.netlify.app/). Estas notas son producidas
-en un contenedor de [Docker](https://www.docker.com/products/docker-desktop) (con imagen base de [rocker *verse*](https://www.rocker-project.org), y unos
+en un contenedor de Docker (con imagen base de [rocker *verse*](https://www.rocker-project.org), y unos
 8G de memoria) construido con el Dockerfile del repositorio. 
 
 ### Contribuciones
